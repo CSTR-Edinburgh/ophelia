@@ -14,10 +14,17 @@ matplotlib.use('pdf')
 import matplotlib.pyplot as plt
 from scipy import signal
 
-from hyperparams import Hyperparams as hp
 import tensorflow as tf
+import math
 
-def get_spectrograms(fpath):
+import sys
+# modify import path to obtain modules from the tools/magphase/src directory:
+#this_dir = os.path.realpath(os.path.abspath(os.path.dirname(__file__)))
+#sys.path.append(os.path.join(this_dir, 'tool', 'magphase', 'src'))
+#
+#import magphase as mp
+
+def get_spectrograms(hp, fpath):
     '''Parse the wave file in `fpath` and
     Returns normalized melspectrogram and linear spectrogram.
 
@@ -32,8 +39,8 @@ def get_spectrograms(fpath):
     y, sr = librosa.load(fpath, sr=hp.sr)
 
     # Trimming
-    y, _ = librosa.effects.trim(y)
-
+    if hp.trim_before_spectrogram_extraction:
+        y, _ = librosa.effects.trim(y, top_db=hp.trim_before_spectrogram_extraction) #### osw: don't trim here so length matches e.g. magphase features
     # Preemphasis
     y = np.append(y[0], y[1:] - hp.preemphasis * y[:-1])
 
@@ -64,7 +71,7 @@ def get_spectrograms(fpath):
 
     return mel, mag
 
-def spectrogram2wav(mag):
+def spectrogram2wav(hp, mag):
     '''# Generate wave file from linear magnitude spectrogram
 
     Args:
@@ -83,7 +90,7 @@ def spectrogram2wav(mag):
     mag = np.power(10.0, mag * 0.05)
 
     # wav reconstruction
-    wav = griffin_lim(mag**hp.power)
+    wav = griffin_lim(hp, mag**hp.power)
 
     # de-preemphasis
     wav = signal.lfilter([1], [1, -hp.preemphasis], wav)
@@ -93,27 +100,27 @@ def spectrogram2wav(mag):
 
     return wav.astype(np.float32)
 
-def griffin_lim(spectrogram):
+def griffin_lim(hp, spectrogram):
     '''Applies Griffin-Lim's raw.'''
     X_best = copy.deepcopy(spectrogram)
     for i in range(hp.n_iter):
-        X_t = invert_spectrogram(X_best)
+        X_t = invert_spectrogram(hp, X_best)
         est = librosa.stft(X_t, hp.n_fft, hp.hop_length, win_length=hp.win_length)
         phase = est / np.maximum(1e-8, np.abs(est))
         X_best = spectrogram * phase
-    X_t = invert_spectrogram(X_best)
+    X_t = invert_spectrogram(hp, X_best)
     y = np.real(X_t)
 
     return y
 
-def invert_spectrogram(spectrogram):
+def invert_spectrogram(hp, spectrogram):
     '''Applies inverse fft.
     Args:
       spectrogram: [1+n_fft//2, t]
     '''
     return librosa.istft(spectrogram, hp.hop_length, win_length=hp.win_length, window="hann")
 
-def plot_alignment(alignment, gs, dir=hp.logdir):
+def plot_alignment(hp, alignment, gs, dir=''):
     """Plots the alignment.
 
     Args:
@@ -121,6 +128,8 @@ def plot_alignment(alignment, gs, dir=hp.logdir):
       gs: (int) global step.
       dir: Output path.
     """
+    if not dir:
+        dir = hp.logdir
     if not os.path.exists(dir): os.mkdir(dir)
 
     fig, ax = plt.subplots()
@@ -131,7 +140,7 @@ def plot_alignment(alignment, gs, dir=hp.logdir):
     plt.savefig('{}/alignment_{}.png'.format(dir, gs), format='png')
     plt.close(fig)
 
-def guided_attention(g=0.2):
+def guided_attention(hp, g=0.2):
     '''Guided attention. Refer to page 3 on the paper.'''
     W = np.zeros((hp.max_N, hp.max_T), dtype=np.float32)
     for n_pos in range(W.shape[0]):
@@ -144,12 +153,12 @@ def learning_rate_decay(init_lr, global_step, warmup_steps = 4000.0):
     step = tf.to_float(global_step + 1)
     return init_lr * warmup_steps**0.5 * tf.minimum(step * warmup_steps**-1.5, step**-0.5)
 
-def load_spectrograms(fpath):
+def load_spectrograms(hp, fpath):
     '''Read the wave file in `fpath`
     and extracts spectrograms'''
 
     fname = os.path.basename(fpath)
-    mel, mag = get_spectrograms(fpath)
+    mel, mag = get_spectrograms(hp, fpath)
     t = mel.shape[0]
 
     # Marginal padding for reduction shape sync.
@@ -158,6 +167,45 @@ def load_spectrograms(fpath):
     mag = np.pad(mag, [[0, num_paddings], [0, 0]], mode="constant")
 
     # Reduction
-    mel = mel[::hp.r, :]
-    return fname, mel, mag
+    mel_reduced = mel[::hp.r, :]
+    if hp.extract_full_mel:
+        return fname, mel_reduced, mag, mel
+    else:
+        return fname, mel_reduced, mag
 
+
+def split_streams(combined, streamlist, streamdims):
+    separate_streams = {}
+    start = 0
+    for (stream, dim) in zip(streamlist, streamdims):
+        end = start + dim
+        stream_speech = combined[:, start:end]
+        start = end
+        separate_streams[stream] = stream_speech
+    return separate_streams
+
+
+def magphase_synth_from_compressed(split_predictions, samplerate=48000, b_const_rate=5.0):
+
+    required_streams = ['real','imag','lf0','vuv','mag']
+    for stream in required_streams:
+        assert stream in split_predictions, 'Missing stream: %s'%(stream)
+
+    lfz = split_predictions['lf0'].flatten()
+    vuv = split_predictions['vuv'].flatten()
+
+    ## TODO: configure this...
+    unvoiced = vuv<0.5
+    lfz = np.clip(lfz, math.log(60.0), math.log(400.0))
+    lfz[unvoiced] = -10000000000.0
+
+    synwave = mp.synthesis_from_compressed(split_predictions['mag'], split_predictions['real'], \
+                    split_predictions['imag'], lfz, samplerate, b_const_rate=b_const_rate) # fft_len=2048,
+    
+    return synwave
+
+if __name__ == '__main__':
+    import pylab
+    a = guided_attention(g=0.2)    
+    pylab.imshow(a)
+    pylab.show()

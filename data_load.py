@@ -7,7 +7,7 @@ https://www.github.com/kyubyong/dc_tts
 
 from __future__ import print_function
 
-from hyperparams import Hyperparams as hp
+# from hyperparams import Hyperparams as hp
 import numpy as np
 import tensorflow as tf
 from utils import *
@@ -16,12 +16,14 @@ import re
 import os
 import unicodedata
 
-def load_vocab():
+from tqdm import tqdm
+
+def load_vocab(hp):
     char2idx = {char: idx for idx, char in enumerate(hp.vocab)}
     idx2char = {idx: char for idx, char in enumerate(hp.vocab)}
     return char2idx, idx2char
 
-def text_normalize(text):
+def text_normalize(text, hp):
     text = ''.join(char for char in unicodedata.normalize('NFD', text)
                            if unicodedata.category(char) != 'Mn') # Strip accents
 
@@ -30,66 +32,97 @@ def text_normalize(text):
     text = re.sub("[ ]+", " ", text)
     return text
 
-def load_data(mode="train"):
+def phones_normalize(text, char2idx):
+    phones = re.split('\s+', text.strip(' \n'))
+    for phone in phones: 
+        if phone not in char2idx:
+            sys.exit('Phone %s not listed in phone set'%(phone))
+    return phones
+
+def load_data(hp, mode="train"):
     '''Loads data
       Args:
           mode: "train" or "synthesize".
     '''
     # Load vocabulary
-    char2idx, idx2char = load_vocab()
+    char2idx, idx2char = load_vocab(hp)
 
     if mode=="train":
-        if "LJ" in hp.data:
-            # Parse
-            fpaths, text_lengths, texts = [], [], []
-            transcript = os.path.join(hp.data, 'transcript.csv')
-            lines = codecs.open(transcript, 'r', 'utf-8').readlines()
-            for line in lines:
-                fname, _, text = line.strip().split("|")
 
-                fpath = os.path.join(hp.data, "wavs", fname + ".wav")
-                fpaths.append(fpath)
+        fpaths, text_lengths, texts = [], [], []
+        transcript = os.path.join(hp.data, 'transcript.csv')
+        lines = codecs.open(transcript, 'r', 'utf-8').readlines()
+        for line in tqdm(lines, desc='load_data'):
+            fields = line.strip().split("|")
+            assert len(fields) >= 3
+            fname, unnorm_text, norm_text = fields[:3]
+            if len(fields) >= 4:
+                phones = fields[4]
+            if len(fields) >= 5:
+                durations = fields[5]
 
-                text = text_normalize(text) + "E"  # E: EOS
+            fpath = os.path.join(hp.data, "wav_norm", fname + ".wav")
+            fpaths.append(fpath)
+
+            if hp.input_type == 'phones':
+                phones = phones_normalize(phones, char2idx) # in case of phones, all EOS markers are assumed included
+                phones = [char2idx[char] for char in phones]
+                text_lengths.append(len(phones))
+                texts.append(np.array(phones, np.int32).tostring())
+            elif hp.input_type == 'letters':
+                text = text_normalize(norm_text, hp) + "E"  # E: EOS
                 text = [char2idx[char] for char in text]
                 text_lengths.append(len(text))
-                texts.append(np.array(text, np.int32).tostring())
-
+                texts.append(np.array(text, np.int32).tostring())                    
+             
+        if hp.n_utts > 0:
+            assert hp.n_utts <= len(fpaths)
+            return fpaths[:hp.n_utts], text_lengths[:hp.n_utts], texts[:hp.n_utts]
+        else:    
             return fpaths, text_lengths, texts
-        else: # nick or kate
-            # Parse
-            fpaths, text_lengths, texts = [], [], []
-            transcript = os.path.join(hp.data, 'transcript.csv')
-            lines = codecs.open(transcript, 'r', 'utf-8').readlines()
-            for line in lines:
-                fname, _, text, is_inside_quotes, duration = line.strip().split("|")
-                duration = float(duration)
-                if duration > 10. : continue
-
-                fpath = os.path.join(hp.data, fname)
-                fpaths.append(fpath)
-
-                text += "E"  # E: EOS
-                text = [char2idx[char] for char in text]
-                text_lengths.append(len(text))
-                texts.append(np.array(text, np.int32).tostring())
-
-        return fpaths, text_lengths, texts
 
     else: # synthesize on unseen test text.
-        # Parse
-        lines = codecs.open(hp.test_data, 'r', 'utf-8').readlines()[1:]
-        sents = [text_normalize(line.split(" ", 1)[-1]).strip() + "E" for line in lines] # text normalization, E: EOS
-        texts = np.zeros((len(sents), hp.max_N), np.int32)
-        for i, sent in enumerate(sents):
-            texts[i, :len(sent)] = [char2idx[char] for char in sent]
-        return texts
+        if "nancy" in hp.data:   ## get phones from heldout transcripts
+            fpaths, text_lengths, texts = [], [], []
+            transcript = os.path.join(hp.data, 'transcript.csv.test')
+            lines = codecs.open(transcript, 'r', 'utf-8').readlines()[:3] ## TODO configure n synth 
+            texts = np.zeros((len(lines), hp.max_N), np.int32)
+            for (i, line) in enumerate(lines):
+                fname, _, sent, phones, durations = line.strip().split("|")
+                if hp.input_type == 'phones':                
+                    phones = phones_normalize(phones, char2idx) + [hp.EOS]
+                    # print (phones)
+                    phones = [char2idx[char] for char in phones]
+                    texts[i, :len(phones)] = phones
+                elif hp.input_type == 'letters':
+                    print (sent)
+                    sent = text_normalize(sent, hp) + 'E'
+                    #sent = text_normalize(sent, hp) + 'E'   #### this e lowered ! 2nd added  below!!!!!
+					
+                    print (sent)
+                    ixx = [char2idx[char] for char in sent]
+                    print (ixx)
 
-def get_batch():
+                    texts[i, :len(sent)+1] = [char2idx[char] for char in text_normalize(sent, hp) + 'E' ]                    
+                    #texts[i, :len(sent)+1] = [char2idx[char] for char in sent] # text_normalize(sent, hp) + 'E' ]    
+					                
+            return texts
+        else:
+            # Parse
+            lines = codecs.open(hp.test_data, 'r', 'utf-8').readlines()[1:]
+            sents = [text_normalize(line.split(" ", 1)[-1], hp).strip() + "E" for line in lines] # text normalization, E: EOS
+            texts = np.zeros((len(sents), hp.max_N), np.int32)
+            for i, sent in enumerate(sents):
+                texts[i, :len(sent)] = [char2idx[char] for char in sent]
+            return texts
+
+def get_batch(hp):
     """Loads training data and put them in queues"""
+    # print ('get_batch')
     with tf.device('/cpu:0'):
         # Load data
-        fpaths, text_lengths, texts = load_data() # list
+        fpaths, text_lengths, texts = load_data(hp) # list
+
         maxlen, minlen = max(text_lengths), min(text_lengths)
 
         # Calc total batch count
@@ -104,8 +137,12 @@ def get_batch():
         if hp.prepro:
             def _load_spectrograms(fpath):
                 fname = os.path.basename(fpath)
-                mel = "mels/{}".format(fname.replace("wav", "npy"))
-                mag = "mags/{}".format(fname.replace("wav", "npy"))
+                mel = "{}/{}".format(hp.coarse_audio_dir, fname.replace("wav", "npy"))
+                mag = "{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy"))
+                if 0:
+                    print ('mag file:')
+                    print (mag)
+                    print (np.load(mag).shape)
                 return fname, np.load(mel), np.load(mag)
 
             fname, mel, mag = tf.py_func(_load_spectrograms, [fpath], [tf.string, tf.float32, tf.float32])
@@ -116,7 +153,8 @@ def get_batch():
         fname.set_shape(())
         text.set_shape((None,))
         mel.set_shape((None, hp.n_mels))
-        mag.set_shape((None, hp.n_fft//2+1))
+        mag.set_shape((None, hp.full_dim))
+        #mag.set_shape((None, hp.n_fft//2+1))  ### OSW: softcoded this
 
         # Batching
         _, (texts, mels, mags, fnames) = tf.contrib.training.bucket_by_sequence_length(

@@ -44,7 +44,8 @@ def embed(inputs, vocab_size, num_units, zero_pad=True, scope="embedding", reuse
 
 def normalize(inputs,
               scope="normalize",
-              reuse=None):
+              reuse=None,
+              normtype='layer'):
     '''Applies layer normalization that normalizes along the last axis.
 
     Args:
@@ -57,36 +58,21 @@ def normalize(inputs,
     Returns:
       A tensor with the same shape and data dtype as `inputs`.
     '''
-    outputs = tf.contrib.layers.layer_norm(inputs,
-                                           begin_norm_axis=-1,
-                                           scope=scope,
-                                           reuse=reuse)
+    assert normtype in [None, 'layer', 'batch']
+    if normtype == 'layer':
+      outputs = tf.contrib.layers.layer_norm(inputs,
+                                             begin_norm_axis=-1,
+                                             scope=scope,
+                                             reuse=reuse)
+    elif normtype == 'batch':
+      outputs = tf.contrib.layers.batch_norm(inputs,
+                                             scope=scope,
+                                             reuse=reuse)
+    else:
+      outputs = inputs
     return outputs
 
 
-def highwaynet(inputs, num_units=None, scope="highwaynet", reuse=None):
-    '''Highway networks, see https://arxiv.org/abs/1505.00387
-
-    Args:
-      inputs: A 3D tensor of shape [N, T, W].
-      num_units: An int or `None`. Specifies the number of units in the highway layer
-             or uses the input size if `None`.
-      scope: Optional scope for `variable_scope`.
-      reuse: Boolean, whether to reuse the weights of a previous layer
-        by the same name.
-
-    Returns:
-      A 3D tensor of shape [N, T, W].
-    '''
-    if not num_units:
-        num_units = inputs.get_shape()[-1]
-
-    with tf.variable_scope(scope, reuse=reuse):
-        H = tf.layers.dense(inputs, units=num_units, activation=tf.nn.relu, name="dense1")
-        T = tf.layers.dense(inputs, units=num_units, activation=tf.nn.sigmoid,
-                            bias_initializer=tf.constant_initializer(-1.0), name="dense2")
-        outputs = H * T + inputs * (1. - T)
-    return outputs
 
 def conv1d(inputs,
            filters=None,
@@ -98,7 +84,8 @@ def conv1d(inputs,
            activation_fn=None,
            training=True,
            scope="conv1d",
-           reuse=None):
+           reuse=None,
+           normtype='layer'):
     '''
     Args:
       inputs: A 3-D tensor with shape of [batch, time, depth].
@@ -132,7 +119,7 @@ def conv1d(inputs,
                   "kernel_initializer": tf.contrib.layers.variance_scaling_initializer(), "reuse": reuse}
 
         tensor = tf.layers.conv1d(**params)
-        tensor = normalize(tensor)
+        tensor = normalize(tensor, normtype=normtype)
         if activation_fn is not None:
             tensor = activation_fn(tensor)
 
@@ -150,7 +137,8 @@ def hc(inputs,
        activation_fn=None,
        training=True,
        scope="hc",
-       reuse=None):
+       reuse=None,
+       normtype='layer'):
     '''
     Args:
       inputs: A 3-D tensor with shape of [batch, time, depth].
@@ -186,8 +174,8 @@ def hc(inputs,
 
         tensor = tf.layers.conv1d(**params)
         H1, H2 = tf.split(tensor, 2, axis=-1)
-        H1 = normalize(H1, scope="H1")
-        H2 = normalize(H2, scope="H2")
+        H1 = normalize(H1, scope="H1", normtype=normtype)
+        H2 = normalize(H2, scope="H2", normtype=normtype)
         H1 = tf.nn.sigmoid(H1, "gate")
         H2 = activation_fn(H2, "info") if activation_fn is not None else H2
         tensor = H1*H2 + (1.-H1)*_inputs
@@ -206,7 +194,8 @@ def conv1d_transpose(inputs,
                      activation=None,
                      training=True,
                      scope="conv1d_transpose",
-                     reuse=None):
+                     reuse=None,
+                     normtype='layer'):
     '''
         Args:
           inputs: A 3-D tensor with shape of [batch, time, depth].
@@ -238,7 +227,7 @@ def conv1d_transpose(inputs,
                                    kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
                                    use_bias=use_bias)
         tensor = tf.squeeze(tensor, 1)
-        tensor = normalize(tensor)
+        tensor = normalize(tensor, normtype=normtype)
         if activation is not None:
             tensor = activation(tensor)
 
