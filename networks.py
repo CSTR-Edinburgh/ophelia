@@ -10,7 +10,7 @@ from __future__ import print_function
 from modules import *
 import tensorflow as tf
 
-def TextEnc(hp, L, training=True):
+def TextEnc(hp, L, training=True, speaker_codes=None):
     '''
     Args:
       L: Text inputs. (B, N)
@@ -24,6 +24,13 @@ def TextEnc(hp, L, training=True):
                    vocab_size=len(hp.vocab),
                    num_units=hp.e,
                    scope="embed_{}".format(i)); i += 1
+    if hp.multispeaker in [1, 2]:
+        speaker_codes_time = tf.tile(speaker_codes, [1,tf.shape(L)[1]])
+        speaker_reps = embed(speaker_codes_time,
+                       vocab_size=hp.nspeakers,
+                       num_units=hp.speaker_embedding_size,
+                       scope="embed_{}".format(i)); i += 1 
+        tensor = tf.concat((tensor, speaker_reps), -1)
     tensor = conv1d(tensor,
                     filters=2*hp.d,
                     size=1,
@@ -39,7 +46,7 @@ def TextEnc(hp, L, training=True):
                     training=training,
                     scope="C_{}".format(i), normtype=hp.norm); i += 1
 
-    for _ in range(2):
+    for outer_counter in range(2):
         for j in range(4):
             tensor = hc(tensor,
                             size=3,
@@ -48,6 +55,16 @@ def TextEnc(hp, L, training=True):
                             activation_fn=None,
                             training=training,
                             scope="HC_{}".format(i), normtype=hp.norm); i += 1
+        # if outer_counter==0:
+        #     if hp.multispeaker==2:
+        #         speaker_codes_time = tf.tile(speaker_codes, [1,tf.shape(L)[1]])        
+        #         speaker_reps = embed(speaker_codes_time,
+        #                        vocab_size=hp.nspeakers,
+        #                        num_units=hp.speaker_embedding_size,
+        #                        scope="embed_{}".format(i)); i += 1 
+        #         tensor = tf.concat((tensor, speaker_reps), -1)
+
+
     for _ in range(2):
         tensor = hc(tensor,
                         size=3,
@@ -69,7 +86,7 @@ def TextEnc(hp, L, training=True):
     K, V = tf.split(tensor, 2, -1)
     return K, V
 
-def AudioEnc(hp, S, training=True):
+def AudioEnc(hp, S, training=True, speaker_codes=None):
     '''
     Args:
       S: melspectrogram. (B, T/r, n_mels)
@@ -87,6 +104,17 @@ def AudioEnc(hp, S, training=True):
                     activation_fn=tf.nn.relu,
                     training=training,
                     scope="C_{}".format(i), normtype=hp.norm); i += 1
+
+    if hp.multispeaker in [2]:
+        speaker_codes_time = tf.tile(speaker_codes, [1,tf.shape(S)[1]])   
+        speaker_reps = embed(speaker_codes_time,
+                       vocab_size=hp.nspeakers,
+                       num_units=hp.speaker_embedding_size,
+                       scope="embed_{}".format(i)); i += 1 
+        tensor = tf.concat((tensor, speaker_reps), -1)
+        tensor = conv1d(tensor, filters=hp.d, size=1, rate=1, dropout_rate=hp.dropout_rate, \
+                    training=training, scope="C_{}".format(i), normtype=hp.norm); i += 1
+
     tensor = conv1d(tensor,
                     size=1,
                     rate=1,
@@ -153,7 +181,7 @@ def Attention(hp, Q, K, V, mononotic_attention=False, prev_max_attentions=None):
 
     return R, alignments, max_attentions
 
-def AudioDec(hp, R, training=True):
+def AudioDec(hp, R, training=True, speaker_codes=None):
     '''
     Args:
       R: [Context Vectors; Q]. (B, T/r, 2d)
@@ -171,6 +199,17 @@ def AudioDec(hp, R, training=True):
                     dropout_rate=hp.dropout_rate,
                     training=training,
                     scope="C_{}".format(i), normtype=hp.norm); i += 1
+
+    if hp.multispeaker in [2]:
+        speaker_codes_time = tf.tile(speaker_codes, [1,tf.shape(R)[1]])   
+        speaker_reps = embed(speaker_codes_time,    
+                       vocab_size=hp.nspeakers,
+                       num_units=hp.speaker_embedding_size,
+                       scope="embed_{}".format(i)); i += 1 
+        tensor = tf.concat((tensor, speaker_reps), -1)
+        tensor = conv1d(tensor, filters=hp.d, size=1, rate=1, dropout_rate=hp.dropout_rate, \
+                    training=training, scope="C_{}".format(i), normtype=hp.norm); i += 1
+
     for j in range(4):
         tensor = hc(tensor,
                         size=3,
@@ -210,7 +249,7 @@ def AudioDec(hp, R, training=True):
 
     return logits, Y
 
-def SSRN(hp, Y, training=True):
+def SSRN(hp, Y, training=True, speaker_codes=None):
     '''
     Args:
       Y: Melspectrogram Predictions. (B, T/r, n_mels)
@@ -229,6 +268,17 @@ def SSRN(hp, Y, training=True):
                     dropout_rate=hp.dropout_rate,
                     training=training,
                     scope="C_{}".format(i), normtype=hp.norm); i += 1
+
+    if hp.multispeaker in [2]:
+        speaker_codes_time = tf.tile(speaker_codes, [1,tf.shape(Y)[1]])   
+        speaker_reps = embed(speaker_codes_time,            
+                       vocab_size=hp.nspeakers,
+                       num_units=hp.speaker_embedding_size,
+                       scope="embed_{}".format(i)); i += 1 
+        tensor = tf.concat((tensor, speaker_reps), -1)    
+        tensor = conv1d(tensor, filters=hp.c, size=1, rate=1, dropout_rate=hp.dropout_rate, \
+                    training=training, scope="C_{}".format(i), normtype=hp.norm); i += 1
+
     for j in range(2):
         tensor = hc(tensor,
                       size=3,

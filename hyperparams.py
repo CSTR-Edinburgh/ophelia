@@ -11,6 +11,7 @@ config_name = 'DUMMY' ## this will be provided in modules which make configs as
 class DefaultHyperparams:
     '''Hyper parameters'''
 
+    language = 'general'
     topworkdir = ''
 
     input_type = 'letters' ## letters or phones
@@ -20,7 +21,7 @@ class DefaultHyperparams:
     
     normtype = 'minmax'
     trim_before_spectrogram_extraction = 0
-    extract_full_mel = False  ### extract mel at normal frame rate?
+    extract_full_mel = ''  ### extract mel at normal frame rate? Path to output or empty string for False
     bucket_by = 'textlength'
 
     # signal processing
@@ -44,9 +45,13 @@ class DefaultHyperparams:
     full_audio_dir =  topworkdir + '/mags/'
     norm_stats_file = ''
 
-    use_bd1_loss = True
-    use_bd2_loss = True
-    
+    ## loss weights
+    lw_mel = 0.3333
+    lw_bd1 = 0.3333
+    lw_att = 0.3333
+    ## --
+    lw_mag = 0.5
+    lw_bd2 = 0.5
 
 
     # Model
@@ -58,6 +63,7 @@ class DefaultHyperparams:
     attention_win_size = 3
     norm = 'layer' ## type of normalisation layers to use: form ['layer', 'batch', None]
 
+    multispeaker = 0 ## 0: SD; 1: concatenate speaker code with input text; 2:... 
 
 
     # data
@@ -68,13 +74,16 @@ class DefaultHyperparams:
     vocab = "PE abcdefghijklmnopqrstuvwxyz'.?" # P: Padding, E: EOS.
     max_N = 180 # Maximum number of characters.
     max_T = 210 # Maximum number of mel frames.
+    validpatt = '' ## sentence names containing this string will be held out of training
 
 
 
 
     # training scheme
-    restart_from_savepath = ''
+    restart_from_savepath = []
     lr = 0.001 # Initial learning rate.
-    B = 32 # batch size
+    B1 = 32 # batch size (model 1)
+    B2 = 32 # batch size (model 2)
     save_every_n_iterations = 1000
+    archive_every_n_iterations = 0 ## 0 = do not archive
     num_iterations = 2000000
