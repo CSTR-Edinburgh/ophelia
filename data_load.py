@@ -16,6 +16,10 @@ import re
 import os
 import unicodedata
 
+from libutil import basename, read_floats_from_8bit
+
+import logging 
+
 from tqdm import tqdm
 
 def load_vocab(hp):
@@ -45,6 +49,8 @@ def load_data(hp, mode="train", get_speaker_codes=False):
       Args:
           mode: "train" or "synthesize".
     '''
+    logging.info('Start loading data in mode: %s'%(mode))
+
     # Load vocabulary
     char2idx, idx2char = load_vocab(hp)
 
@@ -58,6 +64,11 @@ def load_data(hp, mode="train", get_speaker_codes=False):
 
     fpaths, text_lengths, texts, speakers = [], [], [], []
     lines = codecs.open(transcript, 'r', 'utf-8').readlines()
+
+    too_long_count_frames = 0
+    too_long_count_text = 0
+    no_data_count = 0
+
     for line in tqdm(lines, desc='load_data'):
         line = line.strip('\n\r |')
         if line == '':
@@ -65,6 +76,21 @@ def load_data(hp, mode="train", get_speaker_codes=False):
         fields = line.strip().split("|")
         assert len(fields) >= 3,  fields
         fname, unnorm_text, norm_text = fields[:3]
+
+        if mode in ["train", "validation"] and os.path.exists(hp.coarse_audio_dir):
+            mel = "{}/{}".format(hp.coarse_audio_dir, fname+".npy")
+            if not os.path.exists(mel):
+                logging.debug('no file %s'%(mel))
+                no_data_count += 1
+                continue
+            nframes = np.load(mel).shape[0]
+            if nframes > hp.max_T:
+                #print('number of frames for %s is %s, exceeds max_T %s: skip it'%(fname, nframes, hp.max_T))
+                too_long_count_frames += 1
+                continue
+
+
+
         if len(fields) >= 4:
             phones = fields[3]
 
@@ -76,21 +102,32 @@ def load_data(hp, mode="train", get_speaker_codes=False):
                 if hp.validpatt not in fname:
                     continue
 
-        fpath = os.path.join(hp.waveforms, fname + ".wav")
-        fpaths.append(fpath)
-        #fnames.append(fname)
+
 
         if hp.input_type == 'phones':
             phones = phones_normalize(phones, char2idx) # in case of phones, all EOS markers are assumed included
             #ophones = phones
-            phones = [char2idx[char] for char in phones]
-            text_length = len(phones)
-            texts.append(np.array(phones, np.int32))
+            letters_or_phones = [char2idx[char] for char in phones]
+            ##text_length = len(phones)
+            ##texts.append(np.array(phones, np.int32))
         elif hp.input_type == 'letters':
             text = text_normalize(norm_text, hp) + "E"  # E: EOS
-            text = [char2idx[char] for char in text]
-            text_length = len(text)
-            texts.append(np.array(text, np.int32))                    
+            letters_or_phones = [char2idx[char] for char in text]
+            ##text_length = len(text)
+            #texts.append(np.array(text, np.int32))    
+
+        text_length = len(letters_or_phones)
+
+        if text_length > hp.max_N:
+            #print('number of letters/phones for %s is %s, exceeds max_N %s: skip it'%(fname, text_length, hp.max_N))
+            too_long_count_text += 1
+            continue
+
+        texts.append(np.array(letters_or_phones, np.int32))
+
+        fpath = os.path.join(hp.waveforms, fname + ".wav")
+        fpaths.append(fpath)
+        #fnames.append(fname)                            
         text_lengths.append(text_length)
 
         if get_speaker_codes:
@@ -100,6 +137,14 @@ def load_data(hp, mode="train", get_speaker_codes=False):
             speaker_ix = speaker2ix[speaker]
             #### speaker_ix = [speaker_ix] * text_length
             speakers.append(np.array(speaker_ix, np.int32))                    
+
+
+
+    logging.info ('Loaded data for %s sentences'%(len(texts)))
+    logging.info ('Sentences skipped with missing features: %s'%(no_data_count))    
+    logging.info ('Sentences skipped with > max_T (%s) frames: %s'%(hp.max_T, too_long_count_frames))
+    logging.info ('Additional sentences skipped with > max_N (%s) letters/phones: %s'%(hp.max_N, too_long_count_text))
+ 
 
 
     # if mode=="train":  
@@ -116,6 +161,7 @@ def load_data(hp, mode="train", get_speaker_codes=False):
             speakers = [speaker.tostring() for speaker in speakers]         
         if hp.n_utts > 0:
             assert hp.n_utts <= len(fpaths)
+            logging.info ('Take first %s (n_utts) sentences'%(hp.n_utts))
             if get_speaker_codes:
                 return fpaths[:hp.n_utts], text_lengths[:hp.n_utts], texts[:hp.n_utts], speakers[:hp.n_utts]
             else:
@@ -126,7 +172,7 @@ def load_data(hp, mode="train", get_speaker_codes=False):
             else:  
                 return fpaths, text_lengths, texts
     elif mode=='validation':
-        texts = [text for text in texts if len(text) <= hp.max_N]
+        #texts = [text for text in texts if len(text) <= hp.max_N]
         stacked_texts = np.zeros((len(texts), hp.max_N), np.int32)
         for i, text in enumerate(texts):
             stacked_texts[i, :len(text)] = text
@@ -144,7 +190,7 @@ def load_data(hp, mode="train", get_speaker_codes=False):
 
 
 
-def get_batch(hp, num=1, get_speaker_codes=False):
+def get_batch(hp, batchsize, get_speaker_codes=False):
     """Loads training data and put them in queues"""
     # print ('get_batch')
     with tf.device('/cpu:0'):
@@ -156,10 +202,10 @@ def get_batch(hp, num=1, get_speaker_codes=False):
 
         maxlen, minlen = max(text_lengths), min(text_lengths)
 
-        if num==1:
-            batchsize = hp.B1                
-        else:
-            batchsize = hp.B2
+        # if num==1:
+        #     batchsize = hp.B1                
+        # else:
+        #     batchsize = hp.B2
 
         # Calc total batch count
         num_batch = len(fpaths) // batchsize
@@ -172,7 +218,45 @@ def get_batch(hp, num=1, get_speaker_codes=False):
             fpath, text_length, text = tf.train.slice_input_producer([fpaths, text_lengths, texts], shuffle=True)
         text = tf.decode_raw(text, tf.int32)  # (None,)
 
-        if hp.prepro:
+
+
+        if hp.random_reduction_on_the_fly:
+
+            assert os.path.isdir(hp.full_mel_dir)
+            def _load_and_reduce_spectrograms(fpath):
+                fname = os.path.basename(fpath)
+                melfile = "{}/{}".format(hp.full_mel_dir, fname.replace("wav", "npy"))
+                magfile = "{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy"))
+
+                mel = np.load(melfile)
+                mag = np.load(magfile)
+
+                start = np.random.randint(0, hp.r)
+
+                mel =  mel[start::4, :]
+                ### How it works:
+                # >>> mel = np.arange(40)
+                # >>> print mel[::4]
+                # [ 0  4  8 12 16 20 24 28 32 36]
+                # >>> print mel[0::4]
+                # [ 0  4  8 12 16 20 24 28 32 36]
+                # >>> print mel[1::4]
+                # [ 1  5  9 13 17 21 25 29 33 37]
+                # >>> print mel[2::4]
+                # [ 2  6 10 14 18 22 26 30 34 38]
+                # >>> print mel[3::4]
+                # [ 3  7 11 15 19 23 27 31 35 39]
+
+                ### need to pad end of mag accordingly (and trim start) so that it matches:--
+                mag = np.pad(mag, [[0, start], [0, 0]], mode="constant")[start:,:]
+                return fname, mel, mag
+
+            fname, mel, mag = tf.py_func(_load_and_reduce_spectrograms, [fpath], [tf.string, tf.float32, tf.float32])
+
+
+            mel_reduced = mel[::hp.r, :]
+
+        elif hp.prepro:
             def _load_spectrograms(fpath):
                 fname = os.path.basename(fpath)
                 mel = "{}/{}".format(hp.coarse_audio_dir, fname.replace("wav", "npy"))
@@ -187,36 +271,53 @@ def get_batch(hp, num=1, get_speaker_codes=False):
         else:
             fname, mel, mag = tf.py_func(load_spectrograms, [fpath], [tf.string, tf.float32, tf.float32])  # (None, n_mels)
 
+        if hp.attention_guide_dir:
+            def load_attention(fpath):
+                attention_guide_file = "{}/{}".format(hp.attention_guide_dir, basename(fpath)+".npy")
+                attention_guide = read_floats_from_8bit(attention_guide_file)
+                return fpath, attention_guide
+            _, attention_guide = tf.py_func(load_attention, [fpath], [tf.string, tf.float32]) # py_func wraps a python function and use it as a TensorFlow op.
+
+
         # Add shape information
         fname.set_shape(())
         text.set_shape((None,))
         if get_speaker_codes:
             speaker.set_shape((None,))
+        if hp.attention_guide_dir:
+            attention_guide.set_shape((None,None))  ## will be letters x frames
         mel.set_shape((None, hp.n_mels))
         mag.set_shape((None, hp.full_dim))
         #mag.set_shape((None, hp.n_fft//2+1))  ### OSW: softcoded this
 
         # Batching
+        #tensorlist = [text, mel, mag, fname]
+        tensordict = {'text': text, 'mel': mel, 'mag': mag, 'fname': fname}
+        
         if get_speaker_codes:
-            _, (texts, speakers, mels, mags, fnames) = tf.contrib.training.bucket_by_sequence_length(
+            tensordict['speaker'] = speaker   ## will be at index 4 if present
+        if hp.attention_guide_dir:
+            #tensordict.append(attention_guide)  ## will be at index -2 (because num_batch appended below) if present
+            tensordict['attention_guide'] = attention_guide
+
+        #_, batched_tensor_list = tf.contrib.training.bucket_by_sequence_length(
+        _, batched_tensor_dict = tf.contrib.training.bucket_by_sequence_length(             
                                             input_length=text_length,
-                                            tensors=[text, speaker, mel, mag, fname],
+                                            tensors=tensordict,
                                             batch_size=batchsize,
                                             bucket_boundaries=[i for i in range(minlen + 1, maxlen - 1, 20)],
                                             num_threads=8,
                                             capacity=batchsize*4,
                                             dynamic_pad=True)
-        else:
-            _, (texts, mels, mags, fnames) = tf.contrib.training.bucket_by_sequence_length(
-                                            input_length=text_length,
-                                            tensors=[text, mel, mag, fname],
-                                            batch_size=batchsize,
-                                            bucket_boundaries=[i for i in range(minlen + 1, maxlen - 1, 20)],
-                                            num_threads=8,
-                                            capacity=batchsize*4,
-                                            dynamic_pad=True)
-    if get_speaker_codes:
-        return texts, speakers, mels, mags, fnames, num_batch
-    else:
-        return texts, mels, mags, fnames, num_batch
+        # print (batched_tensor_list)
+        # print (len(batched_tensor_list))
+        # print (type(batched_tensor_list))
+        # sys.exit('sd3948rbfvsdv')
+
+        #batched_tensor_list.append(num_batch)
+        batched_tensor_dict['num_batch'] = num_batch        
+        return batched_tensor_dict
+
+
+
 

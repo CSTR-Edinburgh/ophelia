@@ -66,14 +66,18 @@ def trim_waves_in_directory(in_dir, out_dir, num_workers=1, tqdm=lambda x: x, \
 
 
 
-def _process_utterance(wav_path, out_dir, top_db=30, pad_sec=0.01, minimum_duration_sec=0.5, trimonly=False):
+def _process_utterance(wav_path, out_dir, top_db=30, end_pad_sec=0.3, pad_sec=0.01, minimum_duration_sec=0.5, trimonly=False):
 
-    wav, fs = soundfile.read(wav_path)
+    wav, fs = soundfile.read(wav_path)  ## TODO: assert mono
     pad = int(pad_sec * fs)
+    end_pad = int(end_pad_sec * fs)
     # print pad
     base = get_basename(wav_path)
     # print base
-    wav, _ = librosa.effects.trim(wav, top_db=top_db)
+    _, (start, end) = librosa.effects.trim(wav, top_db=top_db)
+    start = max(0, (start - end_pad))
+    end = min(len(wav), (end + end_pad))
+    wav = wav[start:end]
     if trimonly:
         ofile = os.path.join(out_dir, base + '.wav')
         soundfile.write(ofile, wav, fs)

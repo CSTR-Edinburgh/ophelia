@@ -119,7 +119,7 @@ def conv1d(inputs,
                   "kernel_initializer": tf.contrib.layers.variance_scaling_initializer(), "reuse": reuse}
 
         tensor = tf.layers.conv1d(**params)
-        tensor = normalize(tensor, normtype=normtype)
+        tensor = normalize(tensor, normtype=normtype, reuse=reuse)
         if activation_fn is not None:
             tensor = activation_fn(tensor)
 
@@ -174,8 +174,8 @@ def hc(inputs,
 
         tensor = tf.layers.conv1d(**params)
         H1, H2 = tf.split(tensor, 2, axis=-1)
-        H1 = normalize(H1, scope="H1", normtype=normtype)
-        H2 = normalize(H2, scope="H2", normtype=normtype)
+        H1 = normalize(H1, scope="H1", normtype=normtype, reuse=reuse)
+        H2 = normalize(H2, scope="H2", normtype=normtype, reuse=reuse)
         H1 = tf.nn.sigmoid(H1, "gate")
         H2 = activation_fn(H2, "info") if activation_fn is not None else H2
         tensor = H1*H2 + (1.-H1)*_inputs
@@ -227,7 +227,7 @@ def conv1d_transpose(inputs,
                                    kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
                                    use_bias=use_bias)
         tensor = tf.squeeze(tensor, 1)
-        tensor = normalize(tensor, normtype=normtype)
+        tensor = normalize(tensor, normtype=normtype, reuse=reuse)
         if activation is not None:
             tensor = activation(tensor)
 

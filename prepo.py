@@ -17,6 +17,8 @@ import glob
 
 from concurrent.futures import ProcessPoolExecutor
 
+from libutil import safe_makedir
+
 # HERE = os.path.realpath(os.path.abspath(os.path.dirname(__file__)))
 # sys.path.append( HERE + '/config/' )
 # import importlib
@@ -29,14 +31,10 @@ def proc(fpath, hp):
     if not os.path.isfile(fpath):
         return
         
-    if hp.extract_full_mel:
-        fname, mel, mag, full_mel = load_spectrograms(hp, fpath)
-    else:
-        fname, mel, mag = load_spectrograms(hp, fpath)
+    fname, mel, mag, full_mel = load_spectrograms(hp, fpath)
     np.save("{}/{}".format(hp.coarse_audio_dir, fname.replace("wav", "npy")), mel)
     np.save("{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy")), mag)
-    if hp.extract_full_mel:
-        np.save("{}/{}".format(hp.extract_full_mel, fname.replace("wav", "npy")), full_mel)
+    np.save("{}/{}".format(hp.full_mel_dir, fname.replace("wav", "npy")), full_mel)
 
 
 
@@ -64,10 +62,9 @@ def main_work():
     #fpaths = load_data(hp)[0] # list
     fpaths = sorted(glob.glob(hp.waveforms + '/*.wav'))
 
-    if not os.path.exists(hp.coarse_audio_dir): os.makedirs(hp.coarse_audio_dir)
-    if not os.path.exists(hp.full_audio_dir): os.makedirs(hp.full_audio_dir)
-    if hp.extract_full_mel:
-        if not os.path.exists(hp.extract_full_mel): os.makedirs(hp.extract_full_mel)
+    safe_makedir(hp.coarse_audio_dir)
+    safe_makedir(hp.full_audio_dir)
+    safe_makedir(hp.full_mel_dir)
            
     executor = ProcessPoolExecutor(max_workers=opts.ncores)    
     futures = []

@@ -34,7 +34,7 @@ def main_work():
     a.add_argument('-cmp', dest='cmpdir', required=False, default='')          
     a.add_argument('-maxframes', dest='maxframes', type=int, default=10000000)
     a.add_argument('-maxletters', dest='maxletters', type=int, default=10000000)
-    a.add_argument('-phone', action='store_true')
+    a.add_argument('-phone', action='store_true', help='Use the 4th field of transcript, containing space-delimited phones')
     a.add_argument('-speaker', action='store_true')
     a.add_argument('-o', dest='outfile', required=False, default='')  
   
@@ -43,7 +43,7 @@ def main_work():
     # ===============================================
     
 
-    texts = codecs.open(opts.infile, 'r', 'utf-8').readlines()
+    texts = codecs.open(opts.infile, 'r', 'utf-8', errors='ignore').readlines()
     texts = [line.strip('\n\r |') for line in texts]
     texts = [t for t in texts if t != '']
     texts = [line.strip().split("|") for line in texts]

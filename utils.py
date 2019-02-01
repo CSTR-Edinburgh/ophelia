@@ -140,13 +140,17 @@ def plot_alignment(hp, alignment, gs, dir=''):
     plt.savefig('{}/alignment_{}.png'.format(dir, gs), format='png')
     plt.close(fig)
 
-def guided_attention(hp, g=0.2):
+def get_attention_guide(xdim, ydim, g=0.2):
     '''Guided attention. Refer to page 3 on the paper.'''
-    W = np.zeros((hp.max_N, hp.max_T), dtype=np.float32)
-    for n_pos in range(W.shape[0]):
-        for t_pos in range(W.shape[1]):
-            W[n_pos, t_pos] = 1 - np.exp(-(t_pos / float(hp.max_T) - n_pos / float(hp.max_N)) ** 2 / (2 * g * g))
+    W = np.zeros((xdim, ydim), dtype=np.float32)
+    for n_pos in range(xdim):
+        for t_pos in range(ydim):
+            W[n_pos, t_pos] = 1 - np.exp(-(t_pos / float(ydim) - n_pos / float(xdim)) ** 2 / (2 * g * g))
     return W
+
+def get_global_attention_guide(hp):
+    return get_attention_guide(hp.max_N, hp.max_T, g=hp.g)
+
 
 def learning_rate_decay(init_lr, global_step, warmup_steps = 4000.0):
     '''Noam scheme from tensor2tensor'''
@@ -168,11 +172,9 @@ def load_spectrograms(hp, fpath):
 
     # Reduction
     mel_reduced = mel[::hp.r, :]
-    if hp.extract_full_mel:
-        return fname, mel_reduced, mag, mel
-    else:
-        return fname, mel_reduced, mag
-
+    return fname, mel_reduced, mag, mel
+    
+    
 
 def split_streams(combined, streamlist, streamdims):
     separate_streams = {}
@@ -203,6 +205,51 @@ def magphase_synth_from_compressed(split_predictions, samplerate=48000, b_const_
                     split_predictions['imag'], lfz, samplerate, b_const_rate=b_const_rate) # fft_len=2048,
     
     return synwave
+
+# from: https://nolanbconaway.github.io/blog/2017/softmax-numpy
+def softmax(X, theta = 1.0, axis = None):
+    """
+    Compute the softmax of each element along an axis of X.
+
+    Parameters
+    ----------
+    X: ND-Array. Probably should be floats.
+    theta (optional): float parameter, used as a multiplier
+        prior to exponentiation. Default = 1.0
+    axis (optional): axis to compute values along. Default is the
+        first non-singleton axis.
+
+    Returns an array the same size as X. The result will sum to 1
+    along the specified axis.
+    """
+
+    # make X at least 2d
+    y = np.atleast_2d(X)
+
+    # find axis
+    if axis is None:
+        axis = next(j[0] for j in enumerate(y.shape) if j[1] > 1)
+
+    # multiply y against the theta parameter,
+    y = y * float(theta)
+
+    # subtract the max for numerical stability
+    y = y - np.expand_dims(np.max(y, axis = axis), axis)
+
+    # exponentiate y
+    y = np.exp(y)
+
+    # take the sum along the specified axis
+    ax_sum = np.expand_dims(np.sum(y, axis = axis), axis)
+
+    # finally: divide elementwise
+    p = y / ax_sum
+
+    # flatten if X was 1D
+    if len(X.shape) == 1: p = p.flatten()
+
+    return p
+
 
 if __name__ == '__main__':
     import pylab
