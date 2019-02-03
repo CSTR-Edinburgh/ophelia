@@ -44,7 +44,7 @@ def phones_normalize(text, char2idx):
             sys.exit('Phone %s not listed in phone set'%(phone))
     return phones
 
-def load_data(hp, mode="train", get_speaker_codes=False):
+def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
     '''Loads data
       Args:
           mode: "train" or "synthesize".
@@ -159,13 +159,13 @@ def load_data(hp, mode="train", get_speaker_codes=False):
         texts = [text.tostring() for text in texts]  
         if get_speaker_codes:
             speakers = [speaker.tostring() for speaker in speakers]         
-        if hp.n_utts > 0:
+        if n_utts > 0:
             assert hp.n_utts <= len(fpaths)
-            logging.info ('Take first %s (n_utts) sentences'%(hp.n_utts))
+            logging.info ('Take first %s (n_utts) sentences'%(n_utts))
             if get_speaker_codes:
-                return fpaths[:hp.n_utts], text_lengths[:hp.n_utts], texts[:hp.n_utts], speakers[:hp.n_utts]
+                return fpaths[:n_utts], text_lengths[:n_utts], texts[:n_utts], speakers[:n_utts]
             else:
-                return fpaths[:hp.n_utts], text_lengths[:hp.n_utts], texts[:hp.n_utts]
+                return fpaths[:n_utts], text_lengths[:n_utts], texts[:n_utts]
         else:  
             if get_speaker_codes:
                 return fpaths, text_lengths, texts, speakers
@@ -190,15 +190,15 @@ def load_data(hp, mode="train", get_speaker_codes=False):
 
 
 
-def get_batch(hp, batchsize, get_speaker_codes=False):
+def get_batch(hp, batchsize, get_speaker_codes=False, n_utts=0):
     """Loads training data and put them in queues"""
     # print ('get_batch')
     with tf.device('/cpu:0'):
         # Load data
         if get_speaker_codes:
-            fpaths, text_lengths, texts, speakers = load_data(hp, get_speaker_codes=True) 
+            fpaths, text_lengths, texts, speakers = load_data(hp, get_speaker_codes=True, n_utts=n_utts) 
         else:
-            fpaths, text_lengths, texts = load_data(hp) 
+            fpaths, text_lengths, texts = load_data(hp, n_utts=n_utts) 
 
         maxlen, minlen = max(text_lengths), min(text_lengths)
 

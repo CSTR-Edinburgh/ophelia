@@ -17,7 +17,7 @@ import glob
 
 from concurrent.futures import ProcessPoolExecutor
 
-from libutil import safe_makedir
+from libutil import safe_makedir, load_config
 
 # HERE = os.path.realpath(os.path.abspath(os.path.dirname(__file__)))
 # sys.path.append( HERE + '/config/' )
@@ -53,11 +53,11 @@ def main_work():
     
     # ===============================================
 
-    config = os.path.abspath(opts.config)
-    assert os.path.isfile(config)
-
-    conf_mod = imp.load_source('config', config)
-    hp = conf_mod.Hyperparams()
+    # config = os.path.abspath(opts.config)
+    # assert os.path.isfile(config)
+    # conf_mod = imp.load_source('config', config)
+    # hp = conf_mod.Hyperparams()
+    hp = load_config(opts.config)
 
     #fpaths = load_data(hp)[0] # list
     fpaths = sorted(glob.glob(hp.waveforms + '/*.wav'))

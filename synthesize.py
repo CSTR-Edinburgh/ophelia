@@ -355,8 +355,8 @@ def synthesize(hp, speaker_id='', num_sentences=0):
         saver1.restore(sess, latest_checkpoint)
         print("Text2Mel Restored from latest epoch %s"%(t2m_epoch))
 
-        var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'SSRN') + \
-                   tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, 'gs')
+        var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'SSRN') #+ \
+                   # tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, 'gs')
         saver2 = tf.train.Saver(var_list=var_list)
         savepath = hp.logdir + "-ssrn"        
         latest_checkpoint = tf.train.latest_checkpoint(savepath)
@@ -406,7 +406,7 @@ def synthesize(hp, speaker_id='', num_sentences=0):
                 wav = spectrogram2wav(hp, mag)
             else:
                 sys.exit('Unsupported vocoder type: %s'%(hp.vocoder))
-            write(hp.sampledir + "/{}.wav".format(bases[i]), hp.sr, wav)
+            write(outdir + "/{}.wav".format(bases[i]), hp.sr, wav)
 
 
 

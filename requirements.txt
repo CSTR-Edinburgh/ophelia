@@ -13,6 +13,7 @@ futures==3.2.0
 gast==0.2.0
 grpcio==1.16.1
 h5py==2.8.0
+htk-io==0.5
 joblib==0.13.0
 Keras-Applications==1.0.6
 Keras-Preprocessing==1.0.5
@@ -21,6 +22,7 @@ librosa==0.6.2
 llvmlite==0.25.0
 Markdown==3.0.1
 matplotlib==2.2.3
+mcd==0.4
 mock==2.0.0
 numba==0.40.1
 numpy==1.15.4

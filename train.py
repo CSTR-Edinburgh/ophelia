@@ -9,7 +9,7 @@ from __future__ import print_function
 
 from tqdm import tqdm
 
-
+import sys
 import glob
 import shutil
 from data_load import load_data
@@ -17,14 +17,9 @@ from modules import *
 # from networks import TextEnc, AudioEnc, AudioDec, Attention, SSRN
 import tensorflow as tf
 from utils import *
-import sys
 
+import random
 
-## to import configs
-# HERE = os.path.realpath(os.path.abspath(os.path.dirname(__file__)))
-# sys.path.append( HERE + '/config/' )
-# import importlib
-import imp
 
 
 from argparse import ArgumentParser
@@ -144,7 +139,7 @@ def main_work():
 
 
     ## take random subset of validation set to avoid 'This is a librivox recording' type sentences
-    np.seed(1234)
+    random.seed(1234)
     v_indices = range(len(valid_filenames))
     random.shuffle(v_indices)
     v = min(hp.validation_sentences_to_evaluate, len(valid_filenames))
@@ -154,7 +149,7 @@ def main_work():
         speaker_codes = np.array(speaker_codes[v_indices]).reshape(-1, 1) ## TODO batchsize
 
 
-    valid_filenames = valid_filenames[v_indices]
+    valid_filenames = np.array(valid_filenames)[v_indices]
     validation_mags = [np.load(hp.full_audio_dir + os.path.sep + basename(fpath)+'.npy') \
                                 for fpath in valid_filenames]                                
     validation_text = validation_text[v_indices, :] ## TODO batchsize

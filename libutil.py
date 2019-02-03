@@ -5,7 +5,7 @@ import re
 import numpy as np
 import codecs
 import imp
-
+import inspect
 
 
     
@@ -87,58 +87,50 @@ def listconf(config):
     for thing in dir(config):
         print (thing, getattr(config, thing))
 
+
+
+### https://stackoverflow.com/questions/1325673/how-to-add-property-to-a-class-dynamically
+
+
+# class atdict(dict):
+#     __getattr__= dict.__getitem__
+#     __setattr__= dict.__setitem__
+#     __delattr__= dict.__delitem__
+
+
+
+## Intended to have hp as a module, but this doesn't allow pickling and therefore 
+## use in parallel processing. So, convert it into an object with same attributes: 
+class Hyperparams(object):
+    def __init__(self, module_object):
+        for (key, value) in module_object.__dict__.items():
+            if key.startswith('_'):
+                continue
+            if inspect.ismodule(value): # e.g. from os imported at top of config
+                continue
+            #print (key, value)
+            setattr(self, key, module_object.__dict__[key])
+     
+
 def load_config(config_fname):        
     config = os.path.abspath(config_fname)
     assert os.path.isfile(config)
-    hp = imp.load_source('config', config)
-    # hp = conf_mod.Hyperparams()
-    # hp.config_name = basename(config_fname) ## string name of configuration
-    # hp = finalise_config(hp)
-    
-
-    # listconf(hp)
-    # sys.exit('--==ooOOOoo==---')
-    
+    settings = imp.load_source('config', config)
+    hp = Hyperparams(settings)
     return hp
 
 
-# def finalise_config(hp):
-#     '''
-#     Add some derived values -- important to do this last in case only one
-#     of a pair of contributing values is altered by a config.
-#     '''
-#     hp.full_dim = hp.n_fft//2+1
-#     hp.hop_length = int(hp.sr * hp.frame_shift)
-#     hp.win_length = int(hp.sr * hp.frame_length)    
-#     hp.prepro = True  # we will never extract spectrograms on the fly
-      
-#     #### Set some paths:-
-#     if not hp.topworkdir:
-#         topdir = os.path.realpath(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-#         hp.topworkdir = os.path.join(topdir, 'work')
-
-#     hp.voicedir = os.path.join(hp.topworkdir, hp.config_name)
-
-#     hp.logdir = os.path.join(hp.voicedir, 'train')
-#     hp.sampledir = os.path.join(hp.voicedir, 'synth')
-
-#     if not hp.featuredir:
-#         hp.featuredir = os.path.join(hp.voicedir, 'data')
-#     hp.coarse_audio_dir = os.path.join(hp.featuredir, 'mels')
-#     hp.full_mel_dir = os.path.join(hp.featuredir, 'mels_full')
-#     hp.full_audio_dir = os.path.join(hp.featuredir, 'mags')
-#     hp.attention_guide_dir = os.path.join(hp.featuredir, 'att')
-
-
-
-
-
 ## Snickery etc.:-
-# def load_config(config_fname):
-#     config = {}
-#     execfile(config_fname, config)
-#     del config['__builtins__']
-#     _, config_name = os.path.split(config_fname)
-#     config_name = config_name.replace('.cfg','').replace('.conf','')
-#     config['config_name'] = config_name
-#     return config    
+def load_config2(config_fname):
+    config = {}
+    execfile(config_fname, config)
+    del config['__builtins__']
+    #_, config_name = os.path.split(config_fname)
+    #config_name = config_name.replace('.cfg','').replace('.conf','')
+    #config['config_name'] = config_name
+    # class atdict(dict):
+    #     __getattr__= dict.__getitem__
+    #     __setattr__= dict.__setitem__
+    #     __delattr__= dict.__delitem__    
+    return config  
+
