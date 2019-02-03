@@ -1,33 +1,27 @@
+# -*- coding: utf-8 -*-
+#!/usr/bin/env python2
+'''
+Based on code by kyubyong park at https://www.github.com/kyubyong/dc_tts
+'''
+
 from data_load import get_batch, load_vocab
-from modules import *
 from networks import TextEnc, AudioEnc, AudioDec, Attention, SSRN
 import tensorflow as tf
-from utils import *
-from utils import get_global_attention_guide
+from utils import get_global_attention_guide, learning_rate_decay
 
 class Graph(object):
 
     def __init__(self, hp, mode="train", reuse=None):
-
-
         assert mode in ['train', 'synthesize']
-        #self.char2idx, self.idx2char = load_vocab(hp)
-
         self.training = True if mode=="train" else False
         self.reuse = reuse
         self.hp = hp
+
         self.add_data(reuse=reuse)                     ## TODO: reuse?? 
-
         self.build_model()
-
-        ## TODO: only for training? :--
-        #with tf.variable_scope("gs"):
-        #    self.global_step = tf.Variable(0, name='global_step', trainable=False)
-
         if self.training:
             self.build_loss()
             self.build_training_scheme()
-
 
     def add_data(self, reuse=None):
         '''
@@ -39,45 +33,25 @@ class Graph(object):
         ## mags: Magnitude. (B, T, n_fft//2+1) float32
         hp = self.hp
         if self.training:
-            ## speaker_codes will be at index 4 if present ; attention_guide will be at index -2 if present; 
             batchdict = get_batch(hp, self.get_batchsize(), get_speaker_codes=hp.multispeaker, n_utts=hp.n_utts)
 
             if 0: print (batchdict) ; print (batchdict.keys()) ; sys.exit('vsfbd')
 
             self.L, self.mels, self.mags, self.fnames, self.num_batch = \
                 batchdict['text'], batchdict['mel'], batchdict['mag'], batchdict['fname'], batchdict['num_batch'] 
-            #self.num_batch = batchlist[-1]
 
             if hp.multispeaker:
                 self.speakers = batchdict['speakers'] # batchlist[4]
             else:
                 self.speakers = None
             if hp.attention_guide_dir:
-                #self.gts = batchlist[-2]
                 self.gts = batchdict['attention_guide']
             else:
                 self.gts = tf.convert_to_tensor(get_global_attention_guide(hp))
-
-
-
-            if 0:
-                print('Got batch:')
-                print(self.L)
-                print(self.mels)
-                print(self.mags)
-                print(self.fnames)
-                print(self.num_batch)
-                print(self.speakers)
-                sys.exit('qwucfbeoivboweibv')
-                # Tensor("bucket_by_sequence_length/bucket/dequeue_top:2", shape=(32, ?), dtype=int32, device=/device:CPU:0)
-                # Tensor("bucket_by_sequence_length/bucket/dequeue_top:3", shape=(32, ?, 62), dtype=float32, device=/device:CPU:0)
-                # Tensor("bucket_by_sequence_length/bucket/dequeue_top:4", shape=(32, ?, 1025), dtype=float32, device=/device:CPU:0)
-                # Tensor("bucket_by_sequence_length/bucket/dequeue_top:5", shape=(32,), dtype=string, device=/device:CPU:0)
-
             batchsize = self.get_batchsize()
             self.prev_max_attentions = tf.ones(shape=(batchsize,), dtype=tf.int32)
             
-        else:  # Synthesize
+        else:  # synthesis
             self.L = tf.placeholder(tf.int32, shape=(None, None))
             self.speakers = None
             if hp.multispeaker:
@@ -87,9 +61,7 @@ class Graph(object):
 
     def build_training_scheme(self):
         hp = self.hp
-
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
-
         self.lr = learning_rate_decay(hp.lr, self.global_step)
         self.optimizer = tf.train.AdamOptimizer(learning_rate=self.lr)
         tf.summary.scalar("lr", self.lr)
@@ -106,8 +78,6 @@ class Graph(object):
         self.merged = tf.summary.merge_all()
 
 
-
-
 class SSRNGraph(Graph):
 
     def get_batchsize(self):
@@ -119,7 +89,6 @@ class SSRNGraph(Graph):
             self.Z_logits, self.Z = SSRN(self.hp, self.mels, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)
 
     def build_loss(self):
- 
         # mag L1 loss
         self.loss_mags = tf.reduce_mean(tf.abs(self.Z - self.mags))
 
@@ -137,9 +106,6 @@ class SSRNGraph(Graph):
         tf.summary.scalar('train/loss_bd2', self.loss_bd2)
         tf.summary.image('train/mag_gt', tf.expand_dims(tf.transpose(self.mags[:1], [0, 2, 1]), -1))
         tf.summary.image('train/mag_hat', tf.expand_dims(tf.transpose(self.Z[:1], [0, 2, 1]), -1))
-
-
-
 
 
 

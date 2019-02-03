@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+#!/usr/bin/env python2
 
 
 import os
@@ -8,7 +10,6 @@ import imp
 import inspect
 
 
-    
 def safe_makedir(dir):
     if not os.path.isdir(dir):
         os.makedirs(dir)
@@ -19,7 +20,6 @@ def writelist(seq, fname):
     f = codecs.open(fname, 'w', encoding='utf8')
     f.write('\n'.join(seq) + '\n')
     f.close()
-    
     
 def readlist(fname):
     f = codecs.open(fname, 'r', encoding='utf8')
@@ -38,7 +38,6 @@ def read_norm_data(fname, stream_names):
         out[stream] = (vals[mean_ix], vals[std_ix])
         mean_ix += 2
     return out
-    
 
 def makedirecs(direcs):
     for direc in direcs:
@@ -82,25 +81,9 @@ def read_floats_from_8bit(fname):
     assert (data.max() <= 1.0) and (data.min() >= 0.0), (data.min(), data.max())
     return data
 
-
-def listconf(config):
-    for thing in dir(config):
-        print (thing, getattr(config, thing))
-
-
-
-### https://stackoverflow.com/questions/1325673/how-to-add-property-to-a-class-dynamically
-
-
-# class atdict(dict):
-#     __getattr__= dict.__getitem__
-#     __setattr__= dict.__setitem__
-#     __delattr__= dict.__delitem__
-
-
-
 ## Intended to have hp as a module, but this doesn't allow pickling and therefore 
-## use in parallel processing. So, convert it into an object with same attributes: 
+## use in parallel processing. So, convert module into an object of arbitrary type 
+## ("Hyperparams") having same attributes: 
 class Hyperparams(object):
     def __init__(self, module_object):
         for (key, value) in module_object.__dict__.items():
@@ -108,10 +91,8 @@ class Hyperparams(object):
                 continue
             if inspect.ismodule(value): # e.g. from os imported at top of config
                 continue
-            #print (key, value)
             setattr(self, key, module_object.__dict__[key])
      
-
 def load_config(config_fname):        
     config = os.path.abspath(config_fname)
     assert os.path.isfile(config)
@@ -119,18 +100,9 @@ def load_config(config_fname):
     hp = Hyperparams(settings)
     return hp
 
+### https://stackoverflow.com/questions/1325673/how-to-add-property-to-a-class-dynamically
 
-## Snickery etc.:-
-def load_config2(config_fname):
-    config = {}
-    execfile(config_fname, config)
-    del config['__builtins__']
-    #_, config_name = os.path.split(config_fname)
-    #config_name = config_name.replace('.cfg','').replace('.conf','')
-    #config['config_name'] = config_name
-    # class atdict(dict):
-    #     __getattr__= dict.__getitem__
-    #     __setattr__= dict.__setitem__
-    #     __delattr__= dict.__delitem__    
-    return config  
-
+# class atdict(dict):
+#     __getattr__= dict.__getitem__
+#     __setattr__= dict.__setitem__
+#     __delattr__= dict.__delitem__

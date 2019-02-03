@@ -3,6 +3,8 @@
 '''
 By kyubyong park. kbpark.linguist@gmail.com. 
 https://www.github.com/kyubyong/dc_tts
+
+Modified...
 '''
 
 from __future__ import print_function
@@ -55,15 +57,6 @@ def TextEnc(hp, L, training=True, speaker_codes=None, reuse=None):
                             activation_fn=None,
                             training=training,
                             scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
-        # if outer_counter==0:
-        #     if hp.multispeaker==2:
-        #         speaker_codes_time = tf.tile(speaker_codes, [1,tf.shape(L)[1]])        
-        #         speaker_reps = embed(speaker_codes_time,
-        #                        vocab_size=hp.nspeakers,
-        #                        num_units=hp.speaker_embedding_size,
-        #                        scope="embed_{}".format(i)); i += 1 
-        #         tensor = tf.concat((tensor, speaker_reps), -1)
-
 
     for _ in range(2):
         tensor = hc(tensor,

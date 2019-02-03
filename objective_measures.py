@@ -9,6 +9,7 @@ TODO: work out best way of handling the fact that predicted *coarse* features
 import logging
 from mcd import dtw
 import mcd.metrics_fast as mt
+
 def compute_dtw_error(reference, predictions):
     minCostTot = 0.0
     framesTot = 0
@@ -18,7 +19,6 @@ def compute_dtw_error(reference, predictions):
         frames = len(nat)
         minCostTot += minCost
         framesTot += frames
-        #print ('LSD = %f (%d/%s frames nat/synth)' % (minCost / frames, frames, len(synth)))
     mean_score = minCostTot / framesTot
     print ('overall LSD = %f (%s frames nat/synth)' % (mean_score, framesTot))
     return mean_score
@@ -37,10 +37,8 @@ def compute_simple_LSD(reference_list, prediction_list):
             mt.logSpecDbDist(natFrame, synthFrame)
             for natFrame, synthFrame in zip(nat, synth)
         ])
-        #logging.debug('Sentence LSD: %s'%(cost))
         framesTot += len(nat)
         costTot += cost
-    #print 'overall MCD = %f (%d frames)' % (costTot / framesTot, framesTot)
     return costTot / framesTot
     
 

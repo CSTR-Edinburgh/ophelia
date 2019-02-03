@@ -6,8 +6,6 @@
 import sys
 import os
 import glob
-#import os
-#import fileinput
 from argparse import ArgumentParser
 
 import imp
@@ -21,8 +19,10 @@ import tqdm
 from concurrent.futures import ProcessPoolExecutor
 
 import tensorflow as tf
-from graphs import Graph
+from architectures import SSRNGraph
 from synthesize import make_mel_batch, split_batch, synth_mel2mag
+from libutil import load_config
+
 
 def synth_wave(hp, magfile):
     mag = np.load(magfile)
@@ -43,46 +43,42 @@ def main_work():
 
     a = ArgumentParser()
     a.add_argument('-c', dest='config', required=True, type=str)
-    a.add_argument('-m', dest='num', type=str, default='12')
     a.add_argument('-ncores', type=int, default=1)
     opts = a.parse_args()
     
     # ===============================================
 
-    config = os.path.abspath(opts.config)
-    assert os.path.isfile(config)
-    conf_mod = imp.load_source('config', config)
-    hp = conf_mod.Hyperparams()
+    hp = load_config(opts.config)
     
+    ### 1) convert saved coarse mels to mags with latest-trained SSRN
+    print('mel2mag: restore last saved SSRN')
+    g = SSRNGraph(hp,  mode="synthesize")
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        
+        var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'SSRN') 
+        saver2 = tf.train.Saver(var_list=var_list)
+        savepath = hp.logdir + "-ssrn"        
+        latest_checkpoint = tf.train.latest_checkpoint(savepath)
+        ssrn_epoch = latest_checkpoint.strip('/ ').split('/')[-1].replace('model_epoch_', '')
+        saver2.restore(sess, latest_checkpoint)
+        print("SSRN Restored from latest epoch %s"%(ssrn_epoch))
 
-    if '1' in opts.num:
-        print('mel2mag: restore last saved SSRN')
-        g = Graph(hp,  mode="synthesize")
-        with tf.Session() as sess:
-            sess.run(tf.global_variables_initializer())
-            var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'SSRN') + \
-                       tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, 'gs')
-            saver2 = tf.train.Saver(var_list=var_list)
-            savepath = hp.logdir + "-2"        
-            saver2.restore(sess, tf.train.latest_checkpoint(savepath))
-            print("SSRN Restored!")
-
-            filelist = glob.glob(hp.logdir + '-1/validation_epoch_*/*.npy')
-            filelist = [fname for fname in filelist if not fname.endswith('.mag.npy')]
-            batch, lengths = make_mel_batch(hp, filelist, oracle=False)
-            #Z = sess.run(g.Z, {g.mels: batch})
-            Z = synth_mel2mag(hp, batch, g, sess, batchsize=32)
-            print ('synthesised mags, now splitting batch:')
-            maglist = split_batch(Z, lengths)
-            for (infname, outdata) in tqdm.tqdm(zip(filelist, maglist)):
-                np.save(infname.replace('.npy','.mag.npy'), outdata)
+        filelist = glob.glob(hp.logdir + '-1/validation_epoch_*/*.npy')
+        filelist = [fname for fname in filelist if not fname.endswith('.mag.npy')]
+        batch, lengths = make_mel_batch(hp, filelist, oracle=False)
+        Z = synth_mel2mag(hp, batch, g, sess, batchsize=32)
+        print ('synthesised mags, now splitting batch:')
+        maglist = split_batch(Z, lengths)
+        for (infname, outdata) in tqdm.tqdm(zip(filelist, maglist)):
+            np.save(infname.replace('.npy','.mag.npy'), outdata)
 
 
 
-    #if '2' in opts.num:
+    ### 2) GL in parallel for both t2m and ssrn validation set 
     print('GL for SSRN validation')
-    filelist = glob.glob(hp.logdir + '-1/validation_epoch_*/*.mag.npy') + \
-               glob.glob(hp.logdir + '-2/validation_epoch_*/*.npy')
+    filelist = glob.glob(hp.logdir + '-t2m/validation_epoch_*/*.mag.npy') + \
+               glob.glob(hp.logdir + '-ssrn/validation_epoch_*/*.npy')
 
     if opts.ncores==1:
         for fname in tqdm.tqdm(filelist):
@@ -99,4 +95,3 @@ def main_work():
 if __name__=="__main__":
 
     main_work()
-

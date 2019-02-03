@@ -1,28 +1,23 @@
 # -*- coding: utf-8 -*-
-#/usr/bin/python2
+#!/usr/bin/env python2
 '''
-By kyubyong park. kbpark.linguist@gmail.com. 
+Adapted from original code by kyubyong park. kbpark.linguist@gmail.com. 
 https://www.github.com/kyubyong/dc_tts
 '''
+
 from __future__ import print_function, division
 
-import numpy as np
+import math
+import sys
 import librosa
 import os, copy
 import matplotlib
 matplotlib.use('pdf')
 import matplotlib.pyplot as plt
 from scipy import signal
-
+import numpy as np
 import tensorflow as tf
-import math
 
-import sys
-# modify import path to obtain modules from the tools/magphase/src directory:
-#this_dir = os.path.realpath(os.path.abspath(os.path.dirname(__file__)))
-#sys.path.append(os.path.join(this_dir, 'tool', 'magphase', 'src'))
-#
-#import magphase as mp
 
 def get_spectrograms(hp, fpath):
     '''Parse the wave file in `fpath` and

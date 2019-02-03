@@ -3,6 +3,8 @@
 '''
 By kyubyong park. kbpark.linguist@gmail.com. 
 https://www.github.com/kyubyong/dc_tts
+
+Modified...
 '''
 
 from __future__ import print_function, division

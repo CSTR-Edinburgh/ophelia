@@ -1,30 +1,23 @@
 # -*- coding: utf-8 -*-
-#/usr/bin/python2
+#! /usr/bin/env python2
 '''
-By kyubyong park. kbpark.linguist@gmail.com.
-https://www.github.com/kyubyong/dc_tts
+Based on code by kyubyong park at https://www.github.com/kyubyong/dc_tts
 '''
 
 from __future__ import print_function
 
-from utils import load_spectrograms
 import os
 import sys
-from data_load import load_data
-import numpy as np
-import tqdm
 import glob
-
-from concurrent.futures import ProcessPoolExecutor
-
-from libutil import safe_makedir, load_config
-
-# HERE = os.path.realpath(os.path.abspath(os.path.dirname(__file__)))
-# sys.path.append( HERE + '/config/' )
-# import importlib
-import imp
-
 from argparse import ArgumentParser
+from concurrent.futures import ProcessPoolExecutor
+import numpy as np
+
+import tqdm
+
+from data_load import load_data
+from libutil import safe_makedir, load_config
+from utils import load_spectrograms
 
 def proc(fpath, hp):
     
@@ -35,9 +28,6 @@ def proc(fpath, hp):
     np.save("{}/{}".format(hp.coarse_audio_dir, fname.replace("wav", "npy")), mel)
     np.save("{}/{}".format(hp.full_audio_dir, fname.replace("wav", "npy")), mag)
     np.save("{}/{}".format(hp.full_mel_dir, fname.replace("wav", "npy")), full_mel)
-
-
-
 
 
 def main_work():
@@ -53,13 +43,8 @@ def main_work():
     
     # ===============================================
 
-    # config = os.path.abspath(opts.config)
-    # assert os.path.isfile(config)
-    # conf_mod = imp.load_source('config', config)
-    # hp = conf_mod.Hyperparams()
     hp = load_config(opts.config)
 
-    #fpaths = load_data(hp)[0] # list
     fpaths = sorted(glob.glob(hp.waveforms + '/*.wav'))
 
     safe_makedir(hp.coarse_audio_dir)

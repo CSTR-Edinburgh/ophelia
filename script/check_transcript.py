@@ -193,8 +193,7 @@ def main_work():
 
     print
     print 'Run again with -maxframes and -maxletters to exclude the tail...'
-    print 'note: configure hp.max_T to be maxframes/4'
-
+    
 
     if opts.outfile:
         f = open(opts.outfile, 'w')

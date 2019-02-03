@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-#/usr/bin/python2
+#!/usr/bin/env python2
 '''
-By kyubyong park. kbpark.linguist@gmail.com. 
+Adapted from original code by kyubyong park. kbpark.linguist@gmail.com. 
 https://www.github.com/kyubyong/dc_tts
 '''
 
 from __future__ import print_function
 
-# from hyperparams import Hyperparams as hp
 import numpy as np
 import tensorflow as tf
 from utils import *
@@ -47,7 +46,7 @@ def phones_normalize(text, char2idx):
 def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
     '''Loads data
       Args:
-          mode: "train" or "synthesize".
+          mode: "train" / "validation" / "synthesize".
     '''
     logging.info('Start loading data in mode: %s'%(mode))
 
@@ -89,8 +88,6 @@ def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
                 too_long_count_frames += 1
                 continue
 
-
-
         if len(fields) >= 4:
             phones = fields[3]
 
@@ -102,19 +99,12 @@ def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
                 if hp.validpatt not in fname:
                     continue
 
-
-
         if hp.input_type == 'phones':
             phones = phones_normalize(phones, char2idx) # in case of phones, all EOS markers are assumed included
-            #ophones = phones
             letters_or_phones = [char2idx[char] for char in phones]
-            ##text_length = len(phones)
-            ##texts.append(np.array(phones, np.int32))
         elif hp.input_type == 'letters':
             text = text_normalize(norm_text, hp) + "E"  # E: EOS
             letters_or_phones = [char2idx[char] for char in text]
-            ##text_length = len(text)
-            #texts.append(np.array(text, np.int32))    
 
         text_length = len(letters_or_phones)
 
@@ -127,7 +117,6 @@ def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
 
         fpath = os.path.join(hp.waveforms, fname + ".wav")
         fpaths.append(fpath)
-        #fnames.append(fname)                            
         text_lengths.append(text_length)
 
         if get_speaker_codes:
@@ -135,25 +124,13 @@ def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
         if len(fields) >= 5:
             speaker = fields[4]
             speaker_ix = speaker2ix[speaker]
-            #### speaker_ix = [speaker_ix] * text_length
             speakers.append(np.array(speaker_ix, np.int32))                    
-
-
 
     logging.info ('Loaded data for %s sentences'%(len(texts)))
     logging.info ('Sentences skipped with missing features: %s'%(no_data_count))    
     logging.info ('Sentences skipped with > max_T (%s) frames: %s'%(hp.max_T, too_long_count_frames))
     logging.info ('Additional sentences skipped with > max_N (%s) letters/phones: %s'%(hp.max_N, too_long_count_text))
  
-
-
-    # if mode=="train":  
-    #     if hp.validpatt: 
-    #         #ys.exit('srverbetbnrt')
-    #         texts = [text for (fname, text) in zip(fnames,texts) if hp.validpatt not in fname]   
-    # elif mode=="validation":
-    #     assert hp.validpatt, "Must specify hp.validpatt to use mode=='dev'"
-    #     texts = [text for (fname, text) in zip(fnames, texts) if hp.validpatt in fname] 
 
     if mode == 'train':
         texts = [text.tostring() for text in texts]  
@@ -182,7 +159,6 @@ def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
             return fpaths, stacked_texts
     else:
         assert mode=='synthesis'
-        #texts = texts[:5]  ### TODO: nsynth
         stacked_texts = np.zeros((len(texts), hp.max_N), np.int32)
         for i, text in enumerate(texts):
             stacked_texts[i, :len(text)] = text
@@ -202,11 +178,6 @@ def get_batch(hp, batchsize, get_speaker_codes=False, n_utts=0):
 
         maxlen, minlen = max(text_lengths), min(text_lengths)
 
-        # if num==1:
-        #     batchsize = hp.B1                
-        # else:
-        #     batchsize = hp.B2
-
         # Calc total batch count
         num_batch = len(fpaths) // batchsize
 
@@ -217,8 +188,6 @@ def get_batch(hp, batchsize, get_speaker_codes=False, n_utts=0):
         else:   
             fpath, text_length, text = tf.train.slice_input_producer([fpaths, text_lengths, texts], shuffle=True)
         text = tf.decode_raw(text, tf.int32)  # (None,)
-
-
 
         if hp.random_reduction_on_the_fly:
 
@@ -252,7 +221,6 @@ def get_batch(hp, batchsize, get_speaker_codes=False, n_utts=0):
                 return fname, mel, mag
 
             fname, mel, mag = tf.py_func(_load_and_reduce_spectrograms, [fpath], [tf.string, tf.float32, tf.float32])
-
 
             mel_reduced = mel[::hp.r, :]
 
@@ -288,19 +256,15 @@ def get_batch(hp, batchsize, get_speaker_codes=False, n_utts=0):
             attention_guide.set_shape((None,None))  ## will be letters x frames
         mel.set_shape((None, hp.n_mels))
         mag.set_shape((None, hp.full_dim))
-        #mag.set_shape((None, hp.n_fft//2+1))  ### OSW: softcoded this
 
         # Batching
-        #tensorlist = [text, mel, mag, fname]
         tensordict = {'text': text, 'mel': mel, 'mag': mag, 'fname': fname}
         
         if get_speaker_codes:
-            tensordict['speaker'] = speaker   ## will be at index 4 if present
+            tensordict['speaker'] = speaker  
         if hp.attention_guide_dir:
-            #tensordict.append(attention_guide)  ## will be at index -2 (because num_batch appended below) if present
             tensordict['attention_guide'] = attention_guide
 
-        #_, batched_tensor_list = tf.contrib.training.bucket_by_sequence_length(
         _, batched_tensor_dict = tf.contrib.training.bucket_by_sequence_length(             
                                             input_length=text_length,
                                             tensors=tensordict,
@@ -309,12 +273,7 @@ def get_batch(hp, batchsize, get_speaker_codes=False, n_utts=0):
                                             num_threads=8,
                                             capacity=batchsize*4,
                                             dynamic_pad=True)
-        # print (batched_tensor_list)
-        # print (len(batched_tensor_list))
-        # print (type(batched_tensor_list))
-        # sys.exit('sd3948rbfvsdv')
 
-        #batched_tensor_list.append(num_batch)
         batched_tensor_dict['num_batch'] = num_batch        
         return batched_tensor_dict
 

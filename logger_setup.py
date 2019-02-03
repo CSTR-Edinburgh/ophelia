@@ -10,18 +10,15 @@ from libutil import safe_makedir
 def logger_setup(logdir):
 
     safe_makedir(logdir)
-    #existing_logs = [fname for fname in os.listdir(logdir) if fname.startswith('log')]
+
+    ## Get new unique named logfile for each run:
     i = 1
     while True:
         logfile = os.path.join(logdir, 'log_{:06d}.txt'.format(i))
-        #print(logfile)
         if not os.path.isfile(logfile):
             break
         else:
             i += 1
-
-    #logfile = os.path.join(logdir, 'log.txt') ## TODO: new unique named logfile for each run?
-
 
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
@@ -37,36 +34,14 @@ def logger_setup(logdir):
     ch.setLevel(logging.DEBUG)
     ch.setFormatter(formatter)
     logger.addHandler(ch)
-    #logger.debug('This is a test log message.')
-
-
-
-
-    #log = logging.getLogger('tensorflow')
-
-
-
-
 
     logger.info('Set up logger to write to console and %s'%(logfile))
-
-    # logging.basicConfig(
-    #     level=logging.DEBUG,
-    #     format="%(asctime)s | %(threadName)-12.12s | %(levelname)-5.5s |  %(message)s",
-    #     handlers=[
-    #         #logging.FileHandler("{0}/{1}.log".format(logPath, fileName)),
-    #         logging.FileHandler("app2.log"),
-    #         logging.StreamHandler()
-    #     ])
 
     log_environment_information(logger, logfile)
 
 
-
-
-
 def log_environment_information(logger, logfile):
-    ### This function's contents adjusted from https://github.com/CSTR-Edinburgh/merlin/blob/master/src/run_merlin.py
+    ### This function's contents adjusted from Merlin (https://github.com/CSTR-Edinburgh/merlin/blob/master/src/run_merlin.py)
     ### TODO: other things to log here?
     logger.info('Installation information:')
     logger.info('  Merlin directory: '+os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir)))
