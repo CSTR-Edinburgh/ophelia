@@ -1,3 +1,4 @@
+numpy==1.15.4
 absl-py==0.6.1
 astor==0.7.1
 audioread==2.1.6
@@ -25,13 +26,13 @@ matplotlib==2.2.3
 mcd==0.4
 mock==2.0.0
 numba==0.40.1
-numpy==1.15.4
 pbr==5.1.1
 protobuf==3.6.1
 pycparser==2.19
 pyparsing==2.3.0
 python-dateutil==2.7.5
 pytz==2018.7
+regex==2019.2.3
 resampy==0.2.1
 scikit-learn==0.20.0
 scipy==1.1.0

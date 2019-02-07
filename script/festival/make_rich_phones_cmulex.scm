@@ -91,7 +91,7 @@ Is this segment word final?"
 
 ; (if (not (member_string 'combilex-rpx (lex.list)))
 ;     (load (path-append lexdir "combilex/" (string-append 'combilex-rpx ".scm"))))
-(lex.select 'cmudict)
+(lex.select 'cmu)
 
 
 (synth_utts "./utts.data")
