@@ -33,8 +33,8 @@ def main_work():
     f = codecs.open(opts.outfile, 'w', encoding='utf8')
     for line in lines:
         fields = line.strip('\n\r ').split('|')
-        assert len(fields) == 3
-        name, _, text = fields
+        assert len(fields) >= 3
+        name, _, text = fields[:3]
         text = text.replace('"', '\\"')
         f.write('(%s "%s")\n'%(name, text))
     f.close()

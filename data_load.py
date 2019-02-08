@@ -126,6 +126,10 @@ def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
             speaker_ix = speaker2ix[speaker]
             speakers.append(np.array(speaker_ix, np.int32))                    
 
+    if mode=="validation":
+        if len(texts)==0:
+            logging.error('No validation sentences collected: maybe the validpatt %s matches no training data file names?'%(hp.validpatt)) ; sys.exit(1)
+
     logging.info ('Loaded data for %s sentences'%(len(texts)))
     logging.info ('Sentences skipped with missing features: %s'%(no_data_count))    
     logging.info ('Sentences skipped with > max_T (%s) frames: %s'%(hp.max_T, too_long_count_frames))

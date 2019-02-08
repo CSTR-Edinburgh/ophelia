@@ -81,7 +81,7 @@ def main_work():
     v_indices = v_indices[:v]
 
     if hp.multispeaker: ## now come back to this after v computed
-        speaker_codes = np.array(speaker_codes[v_indices]).reshape(-1, 1)
+        speaker_codes = np.array(speaker_codes)[v_indices].reshape(-1, 1)
 
     valid_filenames = np.array(valid_filenames)[v_indices]
     validation_mags = [np.load(hp.full_audio_dir + os.path.sep + basename(fpath)+'.npy') \
