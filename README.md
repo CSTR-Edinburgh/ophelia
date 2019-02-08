@@ -458,4 +458,13 @@ python ./script/check_transcript.py -i $DATADIR/transcript.csv -cmp work/vctk_01
 ./util/submit_tf.sh ./train.py -c config/vctk_01.cfg -m t2m
 ./util/submit_tf.sh ./train.py -c config/vctk_01.cfg -m ssrn
 
+
+
+
+######## speaker codes at 2 locations (data & ssrn same as above):
+
+
+./util/submit_tf.sh ./train.py -c ./config/vctk_02.cfg -m t2m
+
+
 ```

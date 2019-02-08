@@ -75,10 +75,18 @@ def TextEnc(hp, L, training=True, speaker_codes=None, reuse=None):
                        num_units=hp.speaker_embedding_size,
                        scope="embed_{}".format(i), reuse=reuse); i += 1 
         tensor = tf.concat((tensor, speaker_reps), -1)
-
+        ### extra 1x1 conv to squash hidden + embedding -> desired size (2*hp.d)
+        tensor = conv1d(tensor,
+                        filters=2*hp.d,
+                        size=1,
+                        rate=1,
+                        dropout_rate=hp.dropout_rate,
+                        activation_fn=tf.nn.relu,
+                        training=training,
+                        scope="C_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
 
     for _ in range(2):
-        tensor = hc(tensor,
+        tensor = hc(tensor,                        
                         size=1,
                         rate=1,
                         dropout_rate=hp.dropout_rate,
