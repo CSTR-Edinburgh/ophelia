@@ -383,7 +383,7 @@ Note that if longer sentences are in dataset, they will be filtered and discarde
 
 
 
-## Multispeaker system
+## Multispeaker system -- WORK IN PROGRESS, NOT YET FIT FOR CONSUMPTION
 
 ```
   cd /group/project/cstr2/owatts/data/
@@ -455,6 +455,7 @@ python ./script/check_transcript.py -i $DATADIR/transcript.csv -cmp work/vctk_01
 
 python ./script/check_transcript.py -i $DATADIR/transcript.csv -cmp work/vctk_01/data/mels/ -phone  -maxframes 100 -maxletters 80
 
-
+./util/submit_tf.sh ./train.py -c config/vctk_01.cfg -m t2m
+./util/submit_tf.sh ./train.py -c config/vctk_01.cfg -m ssrn
 
 ```
