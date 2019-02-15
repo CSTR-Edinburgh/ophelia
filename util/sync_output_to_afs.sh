@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DEST=~/synthetic_speech  ## e.g. directory on AFS where examining audio is straightforward
+DEST=~/samples_dctts  ## e.g. directory on AFS where examining audio is straightforward
 
 PATTERN=$1  ## substring of the config to sync
 
