@@ -81,7 +81,7 @@ def main_work():
     v_indices = v_indices[:v]
 
     if hp.multispeaker: ## now come back to this after v computed
-        speaker_codes = np.array(speaker_codes[v_indices]).reshape(-1, 1)
+        speaker_codes = np.array(speaker_codes)[v_indices].reshape(-1, 1)
 
     valid_filenames = np.array(valid_filenames)[v_indices]
     validation_mags = [np.load(hp.full_audio_dir + os.path.sep + basename(fpath)+'.npy') \
@@ -117,14 +117,14 @@ def main_work():
 
     with sv.managed_session() as sess:
         
-        if hp.restart_from_savepath: 
-            info('Restart from these paths:')
-            info(hp.restart_from_savepath)
+        if hp.restart_from_savepath: #set this param to either True or False
+            # info('Restart from these paths:')
+            # info(hp.restart_from_savepath)
             
-            assert len(hp.restart_from_savepath) == 2
-            restart_from_savepath1, restart_from_savepath2 = hp.restart_from_savepath
-            restart_from_savepath1 = os.path.abspath(restart_from_savepath1)
-            restart_from_savepath2 = os.path.abspath(restart_from_savepath2)
+            # assert len(hp.restart_from_savepath) == 2
+            # restart_from_savepath1, restart_from_savepath2 = hp.restart_from_savepath
+            # restart_from_savepath1 = os.path.abspath(restart_from_savepath1)
+            # restart_from_savepath2 = os.path.abspath(restart_from_savepath2)
 
             sess.graph._unsafe_unfinalize() ## !!! https://stackoverflow.com/questions/41798311/tensorflow-graph-is-finalized-and-cannot-be-modified/41798401
             sess.run(tf.global_variables_initializer())
@@ -133,19 +133,26 @@ def main_work():
             if model_type == 't2m':
                 var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'Text2Mel')
                 saver1 = tf.train.Saver(var_list=var_list)
-                saver1.restore(sess, restart_from_savepath1)
+                latest_checkpoint = tf.train.latest_checkpoint(logdir)
+                saver1.restore(sess, latest_checkpoint)
                 print("Text2Mel Restored!")
             elif model_type == 'ssrn':
                 var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'SSRN') + \
                            tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, 'gs')
                 saver2 = tf.train.Saver(var_list=var_list)
-                saver2.restore(sess, restart_from_savepath2)
+                latest_checkpoint = tf.train.latest_checkpoint(logdir)
+                saver2.restore(sess, latest_checkpoint)
                 print("SSRN Restored!")
+            epoch = int(latest_checkpoint.strip('/ ').split('/')[-1].replace('model_epoch_', ''))
+        else:
+            epoch = 0        
+            # TODO: this counter won't work if training restarts in same directory.
+            ## Get epoch from gs?
+        
+        info('starting epoch is {}'.format(epoch))
 
-
-        loss_history = []
-        epoch = 0  ## TODO: this counter won't work if training restarts in same directory. 
-                   ## Get epoch from gs? 
+        loss_history = [] #any way to restore loss history too?
+ 
 
         current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference)
         info('validation epoch {0}: {1:0.3f}'.format(epoch, current_score))
