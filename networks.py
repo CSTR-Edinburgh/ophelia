@@ -26,7 +26,7 @@ def TextEnc(hp, L, training=True, speaker_codes=None, reuse=None):
                    vocab_size=len(hp.vocab),
                    num_units=hp.e,
                    scope="embed_{}".format(i), reuse=reuse); i += 1
-    if hp.multispeaker in [1, 2]:
+    if 'text_encoder_input' in hp.multispeaker:
         speaker_codes_time = tf.tile(speaker_codes, [1,tf.shape(L)[1]])
         speaker_reps = embed(speaker_codes_time,
                        vocab_size=hp.nspeakers,
@@ -67,8 +67,26 @@ def TextEnc(hp, L, training=True, speaker_codes=None, reuse=None):
                         training=training,
                         scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
 
+
+    if 'text_encoder_towards_end' in hp.multispeaker:
+        speaker_codes_time = tf.tile(speaker_codes, [1,tf.shape(L)[1]])
+        speaker_reps = embed(speaker_codes_time,
+                       vocab_size=hp.nspeakers,
+                       num_units=hp.speaker_embedding_size,
+                       scope="embed_{}".format(i), reuse=reuse); i += 1 
+        tensor = tf.concat((tensor, speaker_reps), -1)
+        ### extra 1x1 conv to squash hidden + embedding -> desired size (2*hp.d)
+        tensor = conv1d(tensor,
+                        filters=2*hp.d,
+                        size=1,
+                        rate=1,
+                        dropout_rate=hp.dropout_rate,
+                        activation_fn=tf.nn.relu,
+                        training=training,
+                        scope="C_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+
     for _ in range(2):
-        tensor = hc(tensor,
+        tensor = hc(tensor,                        
                         size=1,
                         rate=1,
                         dropout_rate=hp.dropout_rate,
@@ -98,7 +116,7 @@ def AudioEnc(hp, S, training=True, speaker_codes=None, reuse=None):
                     training=training,
                     scope="C_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
 
-    if hp.multispeaker in [2]:
+    if 'audio_encoder_input' in hp.multispeaker:
         speaker_codes_time = tf.tile(speaker_codes, [1,tf.shape(S)[1]])   
         speaker_reps = embed(speaker_codes_time,
                        vocab_size=hp.nspeakers,
@@ -193,7 +211,7 @@ def AudioDec(hp, R, training=True, speaker_codes=None, reuse=None):
                     training=training,
                     scope="C_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
 
-    if hp.multispeaker in [2, 3]:
+    if 'audio_decoder_input' in hp.multispeaker:
         speaker_codes_time = tf.tile(speaker_codes, [1,tf.shape(R)[1]])   
         speaker_reps = embed(speaker_codes_time,    
                        vocab_size=hp.nspeakers,
@@ -262,7 +280,7 @@ def SSRN(hp, Y, training=True, speaker_codes=None, reuse=None):
                     training=training,
                     scope="C_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
 
-    if hp.multispeaker in [2]:
+    if 'ssrn_input' in hp.multispeaker:
         speaker_codes_time = tf.tile(speaker_codes, [1,tf.shape(Y)[1]])   
         speaker_reps = embed(speaker_codes_time,            
                        vocab_size=hp.nspeakers,

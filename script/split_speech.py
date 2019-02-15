@@ -52,17 +52,20 @@ def main_work():
 def trim_waves_in_directory(in_dir, out_dir, num_workers=1, tqdm=lambda x: x, \
                 nfiles=0, top_db=30, trimonly=False):
     safe_makedir(out_dir)
-    executor = ProcessPoolExecutor(max_workers=num_workers)
-    futures = []
-
     wave_files = sorted(glob.glob(in_dir + '/*.wav'))
     if nfiles > 0:
         wave_files = wave_files[:min(nfiles, len(wave_files))]
 
-    for (index, wave_file) in enumerate(wave_files):
-        futures.append(executor.submit(
-            partial(_process_utterance, wave_file, out_dir, top_db=top_db, trimonly=trimonly)))
-    return [future.result() for future in tqdm(futures)]
+    if num_workers:
+        executor = ProcessPoolExecutor(max_workers=num_workers)
+        futures = []
+        for (index, wave_file) in enumerate(wave_files):
+            futures.append(executor.submit(
+                partial(_process_utterance, wave_file, out_dir, top_db=top_db, trimonly=trimonly)))
+        return [future.result() for future in tqdm(futures)]
+    else:  ## serial processing
+        for wave_file in tqdm(wave_files):
+            _process_utterance(wave_file, out_dir, top_db=top_db, trimonly=trimonly)        
 
 
 

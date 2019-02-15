@@ -64,7 +64,7 @@ def main_work():
         saver2.restore(sess, latest_checkpoint)
         print("SSRN Restored from latest epoch %s"%(ssrn_epoch))
 
-        filelist = glob.glob(hp.logdir + '-1/validation_epoch_*/*.npy')
+        filelist = glob.glob(hp.logdir + '-t2m/validation_epoch_*/*.npy')
         filelist = [fname for fname in filelist if not fname.endswith('.mag.npy')]
         batch, lengths = make_mel_batch(hp, filelist, oracle=False)
         Z = synth_mel2mag(hp, batch, g, sess, batchsize=32)

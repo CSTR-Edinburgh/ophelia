@@ -155,8 +155,20 @@ Each copy of the model parameters takes c.300MB of disk -- best system to remove
 
 ## Run on more data
 
-Repeat the above with config `lj_01` to use the whole database.
+Repeat the above with config `lj_01` to use the whole database. 
 
+Note the following config values which determine for how long the model is trained:
+
+```
+batchsize = {'t2m': 32, 'ssrn': 32}
+validate_every_n_epochs = 10   ## how often to compute validation score and save speech parameters
+save_every_n_epochs = 20  ## as well as 5 latest models, how often to archive a model
+max_epochs = 300
+```
+
+The most recent model is stored after each each epoch, and the 5 most recent such models are stored before being overwritten. 
+
+(LJ data has 400 batches of 32 sentences, so that 1 epoch = 400 steps.)
 
 
 ## Utilities
@@ -233,6 +245,8 @@ Things to note:
 - The transcription is RP accent, which is not an ideal fit for LJSpeech (a US speaker). However, using a single phoneset means porting models between accents is more straightforward, and finetuning with DCTTS seems to handle the mismatch reasonably. To make the transcription a little more general, no postlexical rules are used by the Festival script meaning e.g. that the final r in "never" in the line above remains. The DCTTS model itself will have to learn that this segment is deleted in SE British speech. 
 
 - The script `fix_transcript.py` is needed to tidy up many spurious "punctuation marks" left due to inadequacies of the .scm script which occur due to how the 'next token' is found in hyphenated words and initialisms. One thing that is not resolved by postprocessing is "'s" in cases where it is (often wrongly) parsed as abbreviated 'is' or 'has' rather than possessive; in these cases it is represented in the phonetic transcript as `<'s>` rather than as an actual phone or phones. Again, it is up to DCTTS to learn whether this should be realised as [s], [z] or [Iz] depending on context.
+
+- (In fact, note that word-internal r's are already removed like in ` l @@ n` -- need to do something more principled with multiple accents -- discuss with JT.)
 
 - We aim to replace the use of Festival for phonetisation in the near future.  
 
@@ -366,3 +380,91 @@ Frame length max:
 
 Note that if longer sentences are in dataset, they will be filtered and discarded when data is loaded before training.
 
+
+
+
+## Multispeaker system -- WORK IN PROGRESS, NOT YET FIT FOR CONSUMPTION
+
+```
+  cd /group/project/cstr2/owatts/data/
+  530  ls
+  531  mv VCTK-Corpus/ VCTK-Corpus_OLD
+  532  wget https://datashare.is.ed.ac.uk/bitstream/handle/10283/2651/VCTK-Corpus.zip
+   unzip VCTK-Corpus.zip
+cd VCTK-Corpus
+
+rm -f metadata.csv
+ls txt/*/*.txt | while read TXT ; do 
+      BASE=`basename $TXT .txt`
+      LINE=`cat $TXT` ; 
+      SPKR=`echo $BASE | awk -F_ '{print $1}'`
+      if [ $SPKR == p376 ] ; then
+         LINE=${LINE:1:-1} ; ## remove initial and final " in p376 data
+      fi 
+      echo "$BASE||$LINE"; 
+done >> metadata.csv
+
+
+
+CODEDIR=/disk/scratch/oliver/dc_tts_osw_clean
+DATADIR=/group/project/cstr2/owatts/data/VCTK-Corpus
+cd $CODEDIR
+python ./script/festival/csv2scm.py -i $DATADIR/metadata.csv -o $DATADIR/utts.data
+
+cd $DATADIR/
+FEST=/afs/inf.ed.ac.uk/group/cstr/projects/simple4all_2/oliver/tool/festival/festival/src/main/festival
+SCRIPT=$CODEDIR/script/festival/make_rich_phones_combirpx_noplex.scm
+$FEST -b $SCRIPT | grep ___KEEP___ | sed 's/___KEEP___//' | tee ./transcript_temp1.csv
+
+python $CODEDIR/script/festival/fix_transcript.py ./transcript_temp1.csv > ./transcript_temp2.csv
+
+
+# add speaker codes in last field
+
+awk -F_ '{print $1}' ./transcript_temp2.csv > speakers.tmp
+paste -d\| ./transcript_temp2.csv speakers.tmp > ./transcript.csv
+
+
+# put all waves in same dir (would prob break on AFS?)
+
+mkdir wav
+mv wav48/p*/*.wav ./wav/
+
+
+cd $CODEDIR
+
+python ./script/normalise_level.py -i $DATADIR/wav -o $DATADIR/wav_norm/ -ncores 25
+
+rm -r  $DATADIR/wav
+
+
+## trim with split wave version 29ef9253253f7c63e4fbebaf06e4e70709c70d68
+
+./util/submit_tf_cpu.sh ./script/split_speech.py -w $DATADIR/wav_norm/ -o $DATADIR/wav_trim_15dB/ -dB 15 -ncores 25 -trimonly
+
+
+#############################
+
+
+cd $CODEDIR
+./util/submit_tf_cpu.sh ./prepare_acoustic_features.py -c ./config/vctk_01.cfg -ncores 25
+./util/submit_tf.sh ./prepare_attention_guides.py -c ./config/vctk_01.cfg -ncores 25
+
+
+python ./script/check_transcript.py -i $DATADIR/transcript.csv -cmp work/vctk_01/data/mels/ -phone
+
+python ./script/check_transcript.py -i $DATADIR/transcript.csv -cmp work/vctk_01/data/mels/ -phone  -maxframes 100 -maxletters 80
+
+./util/submit_tf.sh ./train.py -c config/vctk_01.cfg -m t2m
+./util/submit_tf.sh ./train.py -c config/vctk_01.cfg -m ssrn
+
+
+
+
+######## speaker codes at 2 locations (data & ssrn same as above):
+
+
+./util/submit_tf.sh ./train.py -c ./config/vctk_02.cfg -m t2m
+
+
+```

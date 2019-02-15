@@ -41,7 +41,11 @@ class Graph(object):
                 batchdict['text'], batchdict['mel'], batchdict['mag'], batchdict['fname'], batchdict['num_batch'] 
 
             if hp.multispeaker:
-                self.speakers = batchdict['speakers'] # batchlist[4]
+                ## check multispeaker config is valid:-
+                for position in hp.multispeaker:
+                    assert position in ['text_encoder_input', 'text_encoder_towards_end', \
+                                'audio_decoder_input', 'ssrn_input', 'audio_encoder_input']
+                self.speakers = batchdict['speaker'] 
             else:
                 self.speakers = None
             if hp.attention_guide_dir:
