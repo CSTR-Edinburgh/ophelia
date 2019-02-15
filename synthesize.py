@@ -251,6 +251,7 @@ def synthesize(hp, speaker_id='', num_sentences=0):
         saver2 = tf.train.Saver(var_list=var_list)
         savepath = hp.logdir + "-ssrn"        
         latest_checkpoint = tf.train.latest_checkpoint(savepath)
+        print("save_path:", savepath, "latest_checkpoint:", latest_checkpoint)
         ssrn_epoch = latest_checkpoint.strip('/ ').split('/')[-1].replace('model_epoch_', '')
         saver2.restore(sess, latest_checkpoint)
         print("SSRN Restored from latest epoch %s"%(ssrn_epoch))
@@ -278,7 +279,7 @@ def synthesize(hp, speaker_id='', num_sentences=0):
             Z = np.nan_to_num(Z)
 
         # Generate wav files
-        outdir = os.path.join(hp.sampledir, '%s_%s'%(t2m_epoch, ssrn_epoch))
+        outdir = os.path.join(hp.sampledir, '%s_%s_%s'%(hp.config_name, t2m_epoch, ssrn_epoch))
         safe_makedir(outdir)
         for i, mag in enumerate(Z):
             print("Working on %s"%(bases[i]))
