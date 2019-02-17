@@ -160,7 +160,7 @@ def encode_text(hp, L, g, sess, speaker_data=None):
     if hp.multispeaker:
         K, V = sess.run([ g.K, g.V], {g.L: L, g.speakers: speaker_data})
     else: 
-    K, V = sess.run([ g.K, g.V], {g.L: L}) 
+        K, V = sess.run([ g.K, g.V], {g.L: L}) 
     return (K, V)
 
 def get_text_lengths(L):
@@ -208,6 +208,23 @@ def make_mel_batch(hp, fnames, oracle=True):
     return mel_batch, lengths
 
 
+def restore_latest_model_parameters(sess, hp, model_type):
+    modeltypes = {  't2m': 'Text2Mel', 
+                    'ssrn': 'SSRN', 
+                    'babbler': 'Text2Mel'
+                  }  ## map model type to string used in scope
+    scope = model_types[model_type]
+    var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope)
+    saver = tf.train.Saver(var_list=var_list)
+    savepath = hp.logdir + "-" + model_type
+    latest_checkpoint = tf.train.latest_checkpoint(savepath)
+    latest_epoch = latest_checkpoint.strip('/ ').split('/')[-1].replace('model_epoch_', '')
+    saver.restore(sess, latest_checkpoint)
+    print("Model of type %s restored from latest epoch %s"%(model_type, latest_epoch))
+
+
+
+
 
 def synthesize(hp, speaker_id='', num_sentences=0):
     assert hp.vocoder=='griffin_lim', 'Other vocoders than griffin_lim not yet supported'
@@ -241,23 +258,8 @@ def synthesize(hp, speaker_id='', num_sentences=0):
         ### TODO: specify epoch from comm line?
         ### TODO: t2m and ssrn from separate configs?
 
-        # Restore parameters
-        var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'Text2Mel')
-        saver1 = tf.train.Saver(var_list=var_list)
-        savepath = hp.logdir + "-t2m"
-        latest_checkpoint = tf.train.latest_checkpoint(savepath)
-        t2m_epoch = latest_checkpoint.strip('/ ').split('/')[-1].replace('model_epoch_', '')
-        saver1.restore(sess, latest_checkpoint)
-        print("Text2Mel Restored from latest epoch %s"%(t2m_epoch))
-
-        var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'SSRN') 
-        saver2 = tf.train.Saver(var_list=var_list)
-        savepath = hp.logdir + "-ssrn"        
-        latest_checkpoint = tf.train.latest_checkpoint(savepath)
-        print("save_path:", savepath, "latest_checkpoint:", latest_checkpoint)
-        ssrn_epoch = latest_checkpoint.strip('/ ').split('/')[-1].replace('model_epoch_', '')
-        saver2.restore(sess, latest_checkpoint)
-        print("SSRN Restored from latest epoch %s"%(ssrn_epoch))
+        restore_latest_model_parameters(sess, hp, 't2m')
+        restore_latest_model_parameters(sess, hp, 'ssrn')
 
         t = start_clock('Text2Mel generating...')
         ### TODO: after futher efficiency testing, remove this fork
@@ -311,6 +313,7 @@ def main_work():
     a.add_argument('-c', dest='config', required=True, type=str)
     a.add_argument('-speaker', default='', type=str)
     a.add_argument('-N', dest='num_sentences', default=0, type=int)
+    a.add_argument('-babble', action='store_true')
     
     opts = a.parse_args()
     
