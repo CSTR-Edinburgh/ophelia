@@ -156,7 +156,10 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None):
 
     return (Y, t_ends.tolist())
 
-def encode_text(hp, L, g, sess, speaker_data=None):  ### TODO: remove speaker data?
+def encode_text(hp, L, g, sess, speaker_data=None):  
+    if hp.multispeaker:
+        K, V = sess.run([ g.K, g.V], {g.L: L, g.speakers: speaker_data})
+    else: 
     K, V = sess.run([ g.K, g.V], {g.L: L}) 
     return (K, V)
 
@@ -260,7 +263,7 @@ def synthesize(hp, speaker_id='', num_sentences=0):
         ### TODO: after futher efficiency testing, remove this fork
         if 1:  ### efficient route -- only make K&V once  ## 3.86, 3.70, 3.80 seconds (2 sentences)
             text_lengths = get_text_lengths(L)
-            K, V = encode_text(hp, L, g1, sess, speaker_data=None)
+            K, V = encode_text(hp, L, g1, sess, speaker_data=speaker_data)
             Y, lengths = synth_codedtext2mel(hp, K, V, text_lengths, g1, sess, speaker_data=speaker_data)
         else: ## 5.68, 5.43, 5.38 seconds (2 sentences)
             Y, lengths = synth_text2mel(hp, L, g1, sess, speaker_data=speaker_data)
@@ -280,6 +283,8 @@ def synthesize(hp, speaker_id='', num_sentences=0):
 
         # Generate wav files
         outdir = os.path.join(hp.sampledir, '%s_%s_%s'%(hp.config_name, t2m_epoch, ssrn_epoch))
+        if speaker_id:
+            outdir += '_speaker-%s'%(speaker_id)
         safe_makedir(outdir)
         for i, mag in enumerate(Z):
             print("Working on %s"%(bases[i]))
