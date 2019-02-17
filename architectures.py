@@ -22,6 +22,7 @@ class Graph(object):
         if self.training:
             self.build_loss()
             self.build_training_scheme()
+            
 
     def add_data(self, reuse=None):
         '''
@@ -59,7 +60,7 @@ class Graph(object):
             self.L = tf.placeholder(tf.int32, shape=(None, None))
             self.speakers = None
             if hp.multispeaker:
-                self.speakers = tf.placeholder(tf.int32, shape=(None, None)) # (B x 1)
+                self.speakers = tf.placeholder(tf.int32, shape=(None, None))
             self.mels = tf.placeholder(tf.float32, shape=(None, None, hp.n_mels))
             self.prev_max_attentions = tf.placeholder(tf.int32, shape=(None,))
 
@@ -104,8 +105,10 @@ class SSRNGraph(Graph):
         self.lw_bd2 = self.hp.lw_bd2                    
         self.loss = (self.lw_mag * self.loss_mags) + (self.lw_bd2 * self.loss_bd2)
 
+        # loss_components attribute is used for reporting to log (osw)
         self.loss_components = [self.loss, self.loss_mags, self.loss_bd2]
 
+        # summary used for reporting to tensorboard (kp)
         tf.summary.scalar('train/loss_mags', self.loss_mags)
         tf.summary.scalar('train/loss_bd2', self.loss_bd2)
         tf.summary.image('train/mag_gt', tf.expand_dims(tf.transpose(self.mags[:1], [0, 2, 1]), -1))
@@ -120,7 +123,7 @@ class Text2MelGraph(Graph):
 
     def build_model(self):
         with tf.variable_scope("Text2Mel"):
-            # Get S or decoder inputs. (B, T//r, n_mels)
+            # Get S or decoder inputs. (B, T//r, n_mels). This is audio shifted 1 frame to the right.
             self.S = tf.concat((tf.zeros_like(self.mels[:, :1, :]), self.mels[:, :-1, :]), 1)
 
             # Networks
@@ -166,8 +169,10 @@ class Text2MelGraph(Graph):
         
         self.loss = (self.lw_mel * self.loss_mels) + (self.lw_bd1 * self.loss_bd1) + (self.lw_att * self.loss_att)
 
+        # loss_components attribute is used for reporting to log (osw)
         self.loss_components = [self.loss, self.loss_mels, self.loss_bd1, self.loss_att]
 
+        # summary used for reporting to tensorboard (kp)
         tf.summary.scalar('train/loss_mels', self.loss_mels)
         tf.summary.scalar('train/loss_bd1', self.loss_bd1)
         tf.summary.scalar('train/loss_att', self.loss_att)
@@ -175,6 +180,72 @@ class Text2MelGraph(Graph):
         tf.summary.image('train/mel_hat', tf.expand_dims(tf.transpose(self.Y[:1], [0, 2, 1]), -1))
 
 
+
+
+class TextEncGraph(Graph):  ## partial graph for deployment only
+
+    def build_model(self):
+        with tf.variable_scope("Text2Mel"):
+            # Get S or decoder inputs. (B, T//r, n_mels)
+            self.S = tf.concat((tf.zeros_like(self.mels[:, :1, :]), self.mels[:, :-1, :]), 1)
+
+            # Networks
+            with tf.variable_scope("TextEnc"):
+                self.K, self.V = TextEnc(self.hp, self.L, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)  # (N, Tx, e)
+
+
+
 class BabblerGraph(Graph):
+    '''
+    A model which simply predicts the next audio step given an audio history. Can be used
+    by itself to babble at synthesis time, given some initial seed (e.g. some frames of
+    silence, or the beginning of a sentence to be completed). Alternatively, its weights can 
+    be used to initialise the corresponding weights of a text2mel model. As in the paper
+    "Semi-Supervised Training for Improving Data Efficiency in End-to-End Speech Synthesis" by
+    Yu-An Chung et al. (2018: https://arxiv.org/abs/1808.10128), dummy textencoder outputs 
+    consisting of all zeros are supplied in training.
+    '''
     def get_batchsize(self):
-        pass
+        return self.hp.batchsize.get('babbler', 32) ## default = 32 
+
+    def build_model(self):
+        with tf.variable_scope("Text2Mel"): ## keep scope names consistent with full Text2Mel 
+                                            ## to allow parameters to be reused more easily later
+            # Get S or decoder inputs. (B, T//r, n_mels). This is audio shifted 1 frame to the right.
+            self.S = tf.concat((tf.zeros_like(self.mels[:, :1, :]), self.mels[:, :-1, :]), 1)
+
+            ## Babbler has no TextEnc
+
+            with tf.variable_scope("AudioEnc"):
+                self.Q = AudioEnc(self.hp, self.S, training=self.training, reuse=self.reuse)
+
+            with tf.variable_scope("Attention"):
+                ## Babbler has no real attention. Dummy (all 0) text encoder outputs are supplied instead.
+                # R: concat Q with zero vector (dummy text encoder outputs)
+                dummy_R_prime = tf.zeros_like(self.Q) ## R_prime shares shape of audio encoder output
+                self.R = tf.concat((dummy_R_prime, self.Q), -1) 
+
+            with tf.variable_scope("AudioDec"):
+                self.Y_logits, self.Y = AudioDec(self.hp, self.R, training=self.training, speaker_codes=self.speakers, reuse=self.reuse) # (B, T/r, n_mels)
+
+
+    def build_loss(self):
+        hp = self.hp
+        # mel L1 loss
+        self.loss_mels = tf.reduce_mean(tf.abs(self.Y - self.mels))
+        # mel binary divergence loss
+        self.loss_bd = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Y_logits, labels=self.mels))
+
+        # total loss, with 2 terms combined with loss weights:
+        self.loss = (hp.loss_weights['babbler']['L1'] * self.loss_mels) + \
+                    (hp.loss_weights['babbler']['binary_divergence'] * self.loss_bd) 
+
+        # loss_components attribute is used for reporting to log (osw)
+        self.loss_components = [self.loss, self.loss_mels, self.loss_bd]
+
+        # summary used for reporting to tensorboard (kp)
+        tf.summary.scalar('train/loss_mels', self.loss_mels)
+        tf.summary.scalar('train/loss_bd', self.loss_bd)
+        tf.summary.image('train/mel_gt', tf.expand_dims(tf.transpose(self.mels[:1], [0, 2, 1]), -1))
+        tf.summary.image('train/mel_hat', tf.expand_dims(tf.transpose(self.Y[:1], [0, 2, 1]), -1))
+

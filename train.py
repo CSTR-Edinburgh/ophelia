@@ -14,6 +14,7 @@ from argparse import ArgumentParser
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python import debug as tf_debug
 
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
 from data_load import load_data
@@ -38,6 +39,8 @@ def compute_validation(hp, model_type, epoch, inputs, synth_graph, sess, speaker
         lengths = [len(ref) for ref in validation_set_reference]
         validation_set_predictions = split_batch(validation_set_predictions_tensor, lengths)  
         score = compute_simple_LSD(validation_set_reference, validation_set_predictions)
+    else:
+        info('compute_validation cannot handle model type %s: dummy value (0.0) supplied as validation score'%(model_type)); return 0.0
     ## store parameters for later use:-
     valid_dir = '%s-%s/validation_epoch_%s'%(hp.logdir, model_type, epoch)
     safe_makedir(valid_dir)
@@ -97,6 +100,11 @@ def main_work():
     elif model_type=='ssrn':
         validation_inputs, validation_lengths = make_mel_batch(hp, valid_filenames)
         validation_reference = validation_mags
+    else:
+        info('Undefined model_type {} for making validation inputs -- supply dummy None values'.format(model_type))
+        validation_inputs = None
+        validation_reference = None
+
 
     ## Map to appropriate type of graph depending on model_type:
     AppropriateGraph = {'t2m': Text2MelGraph, 'ssrn': SSRNGraph, 'babbler': BabblerGraph}[model_type]
@@ -116,7 +124,11 @@ def main_work():
     safe_makedir(logdir + '/archive/')
 
     with sv.managed_session() as sess:
-        
+        if 0:  ## Set to 1 to debug NaNs; at tfdbg prompt, type:    run -f has_inf_or_nan 
+            ## later:    lt  -f has_inf_or_nan -n .*AudioEnc.*
+            os.system('rm -rf {}/tmp_tfdbg/'.format(logdir))
+            sess = tf_debug.LocalCLIDebugWrapperSession(sess, dump_root=logdir+'/tmp_tfdbg/')       
+             
         if hp.restart_from_savepath: #set this param to either True or False
             # info('Restart from these paths:')
             # info(hp.restart_from_savepath)
@@ -151,18 +163,19 @@ def main_work():
         
         info('starting epoch is {}'.format(epoch))
 
-        loss_history = [] #any way to restore loss history too?
+        loss_history = [] #any way to restore loss history too? 
  
 
         current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference)
         info('validation epoch {0}: {1:0.3f}'.format(epoch, current_score))
-            
+
         while 1:            
             progress_bar_text = '%s/%s; ep. %s'%(hp.config_name, model_type, epoch)
             for step_in_current_epoch in tqdm(range(g.num_batch), total=g.num_batch, ncols=80, leave=True, unit='b', desc=progress_bar_text):
                 gs, loss_components, _ = sess.run([g.global_step, g.loss_components, g.train_op])
-                loss_history.append(loss_components)
 
+                loss_history.append(loss_components)
+                
             ### End of epoch: validate?
             if hp.validate_every_n_epochs:
                 if epoch % hp.validate_every_n_epochs == 0:

@@ -103,7 +103,21 @@ def synth_text2mel(hp, L, g, sess, speaker_data=None):
 
     return (Y, t_ends.tolist())
 
+def synth_babble(hp, g, sess, seed=False, nsamples=16):
+    '''
+    g: synthesis graph
+    sess: Session
+    TODO: always use random starting condition? Otherwise all samples are identical 
+    '''
+    assert not seed, 'TODO: implement seeding babbler'  
 
+    Y = np.zeros((nsamples, hp.max_T, hp.n_mels), np.float32)
+    
+    t = start_clock('babbling')
+    for j in tqdm(range(hp.max_T)):
+        _Y, = sess.run([ g.Y], {g.mels: Y}) 
+        Y[:, j, :] = _Y[:, j, :]
+    return Y
 
 def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None):
     '''
@@ -209,7 +223,7 @@ def make_mel_batch(hp, fnames, oracle=True):
 
 
 def restore_latest_model_parameters(sess, hp, model_type):
-    modeltypes = {  't2m': 'Text2Mel', 
+    model_types = {  't2m': 'Text2Mel', 
                     'ssrn': 'SSRN', 
                     'babbler': 'Text2Mel'
                   }  ## map model type to string used in scope
@@ -221,7 +235,40 @@ def restore_latest_model_parameters(sess, hp, model_type):
     latest_epoch = latest_checkpoint.strip('/ ').split('/')[-1].replace('model_epoch_', '')
     saver.restore(sess, latest_checkpoint)
     print("Model of type %s restored from latest epoch %s"%(model_type, latest_epoch))
+    return latest_epoch
 
+
+def babble(hp, num_sentences=0):
+
+    if num_sentences == 0:
+        num_sentences = 4 # default
+    g1 = BabblerGraph(hp, mode="synthesize"); print("Babbler graph loaded")
+    g2 = SSRNGraph(hp, mode="synthesize"); print("SSRN graph loaded")
+
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+
+        babbler_epoch = restore_latest_model_parameters(sess, hp, 'babbler')
+        ssrn_epoch = restore_latest_model_parameters(sess, hp, 'ssrn')
+
+        t = start_clock('Babbling...')
+        Y = synth_babble(hp, g1, sess, seed=False, nsamples=num_sentences)
+        stop_clock(t)
+
+        t = start_clock('Mel2Mag generating...')
+        Z = synth_mel2mag(hp, Y, g2, sess)
+        stop_clock(t) 
+
+        if (np.isnan(Z).any()):  ### TODO: keep?
+            Z = np.nan_to_num(Z)
+
+        # Generate wav files
+        outdir = os.path.join(hp.voicedir, 'synth_babble', '%s_%s'%(babbler_epoch, ssrn_epoch))
+        safe_makedir(outdir)
+        for i, mag in enumerate(Z):
+            print("Applying Griffin-Lim to sample number %s"%(i))
+            wav = spectrogram2wav(hp, mag)
+            write(outdir + "/{:03d}.wav".format(i), hp.sr, wav)
 
 
 
@@ -258,8 +305,8 @@ def synthesize(hp, speaker_id='', num_sentences=0):
         ### TODO: specify epoch from comm line?
         ### TODO: t2m and ssrn from separate configs?
 
-        restore_latest_model_parameters(sess, hp, 't2m')
-        restore_latest_model_parameters(sess, hp, 'ssrn')
+        t2m_epoch = restore_latest_model_parameters(sess, hp, 't2m')
+        ssrn_epoch = restore_latest_model_parameters(sess, hp, 'ssrn')
 
         t = start_clock('Text2Mel generating...')
         ### TODO: after futher efficiency testing, remove this fork
@@ -324,7 +371,10 @@ def main_work():
         assert opts.speaker, 'Please specify a speaker from speaker_list with -speaker flag'
         assert opts.speaker in hp.speaker_list
 
-    synthesize(hp, speaker_id=opts.speaker, num_sentences=opts.num_sentences)
+    if opts.babble:
+        babble(hp, num_sentences=opts.num_sentences)
+    else:
+        synthesize(hp, speaker_id=opts.speaker, num_sentences=opts.num_sentences)
 
 
 if __name__=="__main__":
