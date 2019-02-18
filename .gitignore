@@ -1,3 +1,4 @@
 
 *.pyc
 *.cfgc
+config/attention_test.cfg
