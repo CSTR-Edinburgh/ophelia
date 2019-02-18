@@ -274,7 +274,7 @@ def get_batch(hp, batchsize, get_speaker_codes=False, n_utts=0):
                                             tensors=tensordict,
                                             batch_size=batchsize,
                                             bucket_boundaries=[i for i in range(minlen + 1, maxlen - 1, 20)],
-                                            num_threads=8,
+                                            num_threads=hp.num_threads,
                                             capacity=batchsize*4,
                                             dynamic_pad=True)
 
