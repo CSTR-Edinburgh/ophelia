@@ -49,17 +49,14 @@ def compute_validation(hp, model_type, epoch, inputs, synth_graph, sess, speaker
         np.save(os.path.join(valid_dir, basename(valid_filenames[i])), validation_set_predictions[i])
     return score
 
-# use attention_graph to obtain attention maps for a few given inputs 'L'
-def get_alignments(hp, model_type, L, attention_graph, sess, speaker_codes):
-    if model_type == 't2m':
-        text_lengths = get_text_lengths(L) 
-        K, V = encode_text(hp, L, attention_graph, sess, speaker_data=None) #TODO speaker data should be None?
-        _, _, alignments = synth_codedtext2mel(hp, K, V, text_lengths, attention_graph, sess, speaker_data=speaker_codes)
-        return alignments
-    else:
-        return # ssrn model doesn't generate alignments
 
- 
+def get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_inputs, attention_mels, alignment_dir):
+    return_values = sess.run([attention_graph.alignments], # use attention_graph to obtain attention maps for a few given inputs and mels
+                             {attention_graph.L: attention_inputs, 
+                              attention_graph.mels: attention_mels}) 
+    alignments = return_values[0] # sess run returns a list, so unpack this list
+    for i in range(hp.num_sentences_to_plot_attention):
+        plot_alignment(hp, alignments[i], i+1, epoch, dir=alignment_dir)
 
 def main_work():
 
@@ -116,10 +113,16 @@ def main_work():
         validation_inputs = None
         validation_reference = None
 
-
-    ## get the inputs for which you would like to plot attention graphs for 
+    ## Get the text and mel inputs for the utts you would like to plot attention graphs for 
     if hp.plot_attention_every_n_epochs and model_type=='t2m': #check if we want to plot attention
-        attention_inputs = validation_text[:hp.num_sentences_to_plot_attention, :] #inputs is just taken from validation set
+        # TODO do we want to generate and plot attention for validation or training set sentences??? modify attention_inputs accordingly...
+        attention_inputs = validation_text[:hp.num_sentences_to_plot_attention]
+        attention_mels = validation_mels[:hp.num_sentences_to_plot_attention]
+        attention_mels = np.array(attention_mels) #TODO should be able to delete this line...?        
+        attention_mels_array = np.zeros((hp.num_sentences_to_plot_attention, hp.max_T, hp.n_mels), np.float32) # create fixed size array to hold attention mels
+        for i in range(hp.num_sentences_to_plot_attention): # copy data into this fixed sized array
+            attention_mels_array[i, :attention_mels[i].shape[0], :attention_mels[i].shape[1]] = attention_mels[i]
+        attention_mels = attention_mels_array # rename for convenience
 
     ## Map to appropriate type of graph depending on model_type:
     AppropriateGraph = {'t2m': Text2MelGraph, 'ssrn': SSRNGraph, 'babbler': BabblerGraph}[model_type]
@@ -184,11 +187,15 @@ def main_work():
             ## Get epoch from gs?
         
         loss_history = [] #any way to restore loss history too?
+
+        #plot attention generated from freshly initialised model
+        if hp.plot_attention_every_n_epochs and model_type == 't2m' and epoch == 0: # ssrn model doesn't generate alignments 
+            get_and_plot_alignments(hp, epoch - 1, attention_graph, sess, attention_inputs, attention_mels, logdir + "/alignments") # epoch-1 refers to freshly initialised model
  
         current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference)
         info('validation epoch {0}: {1:0.3f}'.format(epoch, current_score))
 
-        while 1:            
+        while 1:  
             progress_bar_text = '%s/%s; ep. %s'%(hp.config_name, model_type, epoch)
             for batch_in_current_epoch in tqdm(range(g.num_batch), total=g.num_batch, ncols=80, leave=True, unit='b', desc=progress_bar_text):
                 gs, loss_components, _ = sess.run([g.global_step, g.loss_components, g.train_op])
@@ -208,14 +215,10 @@ def main_work():
                     current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference)
                     info('validation epoch {0:0}: {1:0.3f}'.format(epoch, current_score))
 
-            ### End of epoch: plot attention matrices?
-            # TODO do we want to generate and plot attention for validation or training set sentences here??? modify attention_inputs accordingly
-            if hp.plot_attention_every_n_epochs and model_type == 't2m': 
-                if epoch % hp.plot_attention_every_n_epochs == 0:
-                    alignments = get_alignments(hp, model_type, attention_inputs, attention_graph, sess, speaker_codes)
-                    for i in range(hp.num_sentences_to_plot_attention):
-                        plot_alignment(hp, alignments[i], i+1, epoch, dir=logdir + "/alignments")
-                  
+            ### End of epoch: plot attention matrices? #################################
+            if hp.plot_attention_every_n_epochs and model_type == 't2m' and epoch % hp.plot_attention_every_n_epochs == 0: # ssrn model doesn't generate alignments 
+                get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_inputs, attention_mels, logdir + "/alignments")
+
             ### Save end of each epoch (all but the most recent 5 will be overwritten):       
             stem = logdir + '/model_epoch_{0}'.format(epoch)
             sv.saver.save(sess, stem)
