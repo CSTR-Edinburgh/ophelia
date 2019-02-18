@@ -161,13 +161,13 @@ def AudioEnc(hp, S, training=True, speaker_codes=None, reuse=None):
 
     return tensor
 
-def Attention(hp, Q, K, V, mononotic_attention=False, prev_max_attentions=None):
+def Attention(hp, Q, K, V, monotonic_attention=False, prev_max_attentions=None):
     '''
     Args:
       Q: Queries. (B, T/r, d)
       K: Keys. (B, N, d)
       V: Values. (B, N, d)
-      mononotic_attention: A boolean. At training, it is False.
+      monotonic_attention: A boolean. At training, it is False.
       prev_max_attentions: (B,). At training, it is set to None.
 
     Returns:
@@ -176,7 +176,7 @@ def Attention(hp, Q, K, V, mononotic_attention=False, prev_max_attentions=None):
       max_attentions: (B, T/r)
     '''
     A = tf.matmul(Q, K, transpose_b=True) * tf.rsqrt(tf.to_float(hp.d))
-    if mononotic_attention:  # for inference
+    if monotonic_attention:  # for inference
         key_masks = tf.sequence_mask(prev_max_attentions, hp.max_N)
         reverse_masks = tf.sequence_mask(hp.max_N - hp.attention_win_size - prev_max_attentions, hp.max_N)[:, ::-1]
         masks = tf.logical_or(key_masks, reverse_masks)
