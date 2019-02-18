@@ -126,7 +126,7 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None):
     g: synthesis graph
     sess: Session
     '''
-    Y = np.zeros((len(K), hp.max_T, hp.n_mels), np.float32)
+    Y = np.zeros((len(K), hp.max_T, hp.n_mels), np.float32) # note that len(K) == num_sentences that we want to generate wavs for
     alignments = np.zeros((len(ends), hp.max_N, hp.max_T), np.float32)
     prev_max_attentions = np.zeros((len(K),), np.int32)
 
