@@ -13,3 +13,4 @@ util/sync_code_from_afs.sh
 util/sync_output_to_afs.sh
 util/sync_code_from_afs.sh
 util/sync_output_to_afs.sh
+config/attention_test.cfg
