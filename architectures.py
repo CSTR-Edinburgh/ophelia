@@ -12,7 +12,8 @@ from utils import get_global_attention_guide, learning_rate_decay
 class Graph(object):
 
     def __init__(self, hp, mode="train", reuse=None):
-        assert mode in ['train', 'synthesize']
+        assert mode in ['train', 'synthesize', 'generate_attention'] 
+        self.mode = mode
         self.training = True if mode=="train" else False
         self.reuse = reuse
         self.hp = hp
@@ -134,9 +135,15 @@ class Text2MelGraph(Graph):
                 # R: (B, T/r, 2d)
                 # alignments: (B, N, T/r)
                 # max_attentions: (B,)
-                self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
-                                                                         mononotic_attention=(not self.training),
-                                                                         prev_max_attentions=self.prev_max_attentions)
+                if self.mode is 'synthesize':
+                    self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
+                                                                            monotonic_attention=True,
+                                                                            prev_max_attentions=self.prev_max_attentions)
+                else: # mode is training or generate_attention
+                    self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
+                                                                            monotonic_attention=False,
+                                                                            prev_max_attentions=self.prev_max_attentions)
+
             with tf.variable_scope("AudioDec"):
                 self.Y_logits, self.Y = AudioDec(self.hp, self.R, training=self.training, speaker_codes=self.speakers, reuse=self.reuse) # (B, T/r, n_mels)
 
