@@ -79,3 +79,19 @@ after the line:
 ```
    (@U     + d 2 3 + 0 0 0) ;ou
 ```
+
+
+## Cleaning up
+
+```
+cd $INSTALL_DIR
+rm *.tar.gz
+
+cd $INSTALL_DIR/festival
+rm *.tar
+```
+
+
+## Note for UoE users
+
+If the installation is run through SSH, make sure you are in an *actual* machine and not just hare or bruegel, as these are just gateways and won't have a C compiler installed.
