@@ -18,6 +18,7 @@ import tensorflow as tf
 
 from tqdm import tqdm
 
+from utils import plot_alignment
 from utils import spectrogram2wav
 from utils import split_streams, magphase_synth_from_compressed 
 from data_load import load_data
@@ -71,7 +72,7 @@ def synth_text2mel(hp, L, g, sess, speaker_data=None):
                                                         ## NB: initialised to max_T -- will default to this.
 
     t = start_clock('gen')
-    for j in tqdm(range(hp.max_T)):
+    for j in tqdm(range(hp.max_T)): # always run for max num of mel-frames
         if hp.multispeaker:
             _Y, _max_attentions, _alignments, = \
                 sess.run([ g.Y, g.max_attentions, g.alignments],
@@ -112,6 +113,7 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None):
     sess: Session
     '''
     Y = np.zeros((len(K), hp.max_T, hp.n_mels), np.float32)
+    alignments = np.zeros((len(ends), hp.max_N, hp.max_T), np.float32)
     prev_max_attentions = np.zeros((len(K),), np.int32)
 
     ### -- set up counters to detect & record sentence end, used for trimming and early stopping --
@@ -122,7 +124,7 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None):
                                                         ## NB: initialised to max_T -- will default to this.
 
     t = start_clock('gen')
-    for j in tqdm(range(hp.max_T)):
+    for j in tqdm(range(hp.max_T)):  # always run for max num of mel-frames
         if hp.multispeaker:
             _Y, _max_attentions, _alignments, = \
                 sess.run([ g.Y, g.max_attentions, g.alignments],
@@ -138,7 +140,8 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None):
                           g.V: V,
                           g.mels: Y,
                           g.prev_max_attentions: prev_max_attentions}) ## osw: removed global_step from synth loop
-        Y[:, j, :] = _Y[:, j, :]
+        Y[:, j, :] = _Y[:, j, :] # build up mel-spec frame-by-frame
+        alignments[:, :, j] = _alignments[:, :, j] # build up attention matrix frame-by-frame
         prev_max_attentions = _max_attentions[:, j]
 
         ## Work out if we've reach end of any/all sentences in batch:-
@@ -154,7 +157,7 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None):
             print(t_ends)
             break
 
-    return (Y, t_ends.tolist())
+    return (Y, t_ends.tolist(), alignments)
 
 def encode_text(hp, L, g, sess, speaker_data=None):  ### TODO: remove speaker data?
     K, V = sess.run([ g.K, g.V], {g.L: L}) 
@@ -210,9 +213,10 @@ def synthesize(hp, speaker_id='', num_sentences=0):
     assert hp.vocoder=='griffin_lim', 'Other vocoders than griffin_lim not yet supported'
 
     # Load data
-    (fpaths, L) = load_data(hp, mode="synthesis")
+    (fpaths, L) = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
     bases = [basename(fpath) for fpath in fpaths]
 
+    # Ensure we aren't trying to generate more utterances than are actually in our test_transcript
     if num_sentences > 0:
         assert num_sentences < len(bases)
         L = L[:num_sentences, :]
@@ -223,14 +227,13 @@ def synthesize(hp, speaker_id='', num_sentences=0):
 
         ## Speaker codes are held in (batch, 1) matrix -- tiling is done inside the graph:
         speaker_data = np.ones((len(L), 1))  *  speaker_ix
-
     else:
         speaker_data = None
 
     # Load graph 
     ## TODO: generalise to combine other types of models into a synthesis pipeline?
-    g1 = Text2MelGraph(hp, mode="synthesize"); print("Graph 1 loaded")
-    g2 = SSRNGraph(hp, mode="synthesize"); print("Graph 1 loaded")
+    g1 = Text2MelGraph(hp, mode="synthesize"); print("Graph 1 (t2m) loaded")
+    g2 = SSRNGraph(hp, mode="synthesize"); print("Graph 2 (ssrn) loaded")
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
@@ -256,12 +259,13 @@ def synthesize(hp, speaker_id='', num_sentences=0):
         saver2.restore(sess, latest_checkpoint)
         print("SSRN Restored from latest epoch %s"%(ssrn_epoch))
 
+        # Pass input L through Text2Mel Graph
         t = start_clock('Text2Mel generating...')
         ### TODO: after futher efficiency testing, remove this fork
         if 1:  ### efficient route -- only make K&V once  ## 3.86, 3.70, 3.80 seconds (2 sentences)
             text_lengths = get_text_lengths(L)
             K, V = encode_text(hp, L, g1, sess, speaker_data=None)
-            Y, lengths = synth_codedtext2mel(hp, K, V, text_lengths, g1, sess, speaker_data=speaker_data)
+            Y, lengths, alignments = synth_codedtext2mel(hp, K, V, text_lengths, g1, sess, speaker_data=speaker_data)
         else: ## 5.68, 5.43, 5.38 seconds (2 sentences)
             Y, lengths = synth_text2mel(hp, L, g1, sess, speaker_data=speaker_data)
         stop_clock(t)
@@ -271,6 +275,7 @@ def synthesize(hp, speaker_id='', num_sentences=0):
         # print (np.isnan(Y).any())
         # print('nan1')
 
+        # Then pass output Y of Text2Mel Graph through SSRN graph to get high res spectrogram Z.
         t = start_clock('Mel2Mag generating...')
         Z = synth_mel2mag(hp, Y, g2, sess)
         stop_clock(t) 
@@ -279,8 +284,9 @@ def synthesize(hp, speaker_id='', num_sentences=0):
             Z = np.nan_to_num(Z)
 
         # Generate wav files
-        outdir = os.path.join(hp.sampledir, '%s_%s_%s'%(hp.config_name, t2m_epoch, ssrn_epoch))
+        outdir = os.path.join(hp.sampledir, 't2m%s_ssrn%s'%(t2m_epoch, ssrn_epoch))
         safe_makedir(outdir)
+        print("Generating wav files, will save to following dir: %s"%(outdir))
         for i, mag in enumerate(Z):
             print("Working on %s"%(bases[i]))
             mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length
@@ -294,6 +300,10 @@ def synthesize(hp, speaker_id='', num_sentences=0):
             else:
                 sys.exit('Unsupported vocoder type: %s'%(hp.vocoder))
             write(outdir + "/{}.wav".format(bases[i]), hp.sr, wav)
+
+        # Plot attention alignments 
+        for i in range(num_sentences):
+            plot_alignment(hp, alignments[i], utt_idx=i+1, t2m_epoch=t2m_epoch, dir=outdir)
 
 
 def main_work():
