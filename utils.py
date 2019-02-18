@@ -115,12 +115,15 @@ def invert_spectrogram(hp, spectrogram):
     '''
     return librosa.istft(spectrogram, hp.hop_length, win_length=hp.win_length, window="hann")
 
-def plot_alignment(hp, alignment, gs, dir=''):
+# TODO add functionality so that we can also plot on phone identities to the encoder states on the y-axis
+def plot_alignment(hp, alignment, utt_idx, t2m_epoch, dir=''):
     """Plots the alignment.
 
     Args:
+      hp: Hyperparams file
       alignment: A numpy array with shape of (encoder_steps, decoder_steps)
-      gs: (int) global step.
+      utt_idx: The index of the utterance that we are plotting, for naming/titling purposes.
+      t2m_epoch: (int) training epoch reached for text2mel model.
       dir: Output path.
     """
     if not dir:
@@ -131,8 +134,13 @@ def plot_alignment(hp, alignment, gs, dir=''):
     im = ax.imshow(alignment)
 
     fig.colorbar(im)
-    plt.title('{} Steps'.format(gs))
-    plt.savefig('{}/alignment_{}.png'.format(dir, gs), format='png')
+    plt.title('Cfg={}, t2m_epoch={}, utt=#{}'.format(
+        hp.config_name, t2m_epoch, utt_idx))
+    plt.ylabel('Encoder timestep')
+    plt.xlabel('Decoder timestep')
+
+    plt.savefig('{}/alignment_{}_utt{}_epoch{}.png'.format(dir,
+                                                           hp.config_name, utt_idx, t2m_epoch), format='png')
     plt.close(fig)
 
 def get_attention_guide(xdim, ydim, g=0.2):
