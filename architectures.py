@@ -34,7 +34,7 @@ class Graph(object):
         ## mels: Reduced melspectrogram. (B, T/r, n_mels) float32
         ## mags: Magnitude. (B, T, n_fft//2+1) float32
         hp = self.hp
-        if self.training:
+        if self.mode is 'train':
             batchdict = get_batch(hp, self.get_batchsize(), get_speaker_codes=hp.multispeaker, n_utts=hp.n_utts)
 
             if 0: print (batchdict) ; print (batchdict.keys()) ; sys.exit('vsfbd')
@@ -57,13 +57,20 @@ class Graph(object):
             batchsize = self.get_batchsize()
             self.prev_max_attentions = tf.ones(shape=(batchsize,), dtype=tf.int32)
             
-        else:  # synthesis
+        elif self.mode is 'synthesize':  # synthesis
             self.L = tf.placeholder(tf.int32, shape=(None, None))
             self.speakers = None
             if hp.multispeaker:
                 self.speakers = tf.placeholder(tf.int32, shape=(None, None))
             self.mels = tf.placeholder(tf.float32, shape=(None, None, hp.n_mels))
             self.prev_max_attentions = tf.placeholder(tf.int32, shape=(None,))
+        elif self.mode is 'generate_attention':
+            self.L = tf.placeholder(tf.int32, shape=(None, None))
+            self.speakers = None
+            if hp.multispeaker:
+                self.speakers = tf.placeholder(tf.int32, shape=(None, None))
+            self.mels = tf.placeholder(tf.float32, shape=(None, None, hp.n_mels))
+            
 
     def build_training_scheme(self):
         hp = self.hp
@@ -142,10 +149,14 @@ class Text2MelGraph(Graph):
                     self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
                                                                             monotonic_attention=True,
                                                                             prev_max_attentions=self.prev_max_attentions)
-                else: # mode is training or generate_attention
+                elif self.mode is 'train': 
                     self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
                                                                             monotonic_attention=False,
                                                                             prev_max_attentions=self.prev_max_attentions)
+                elif self.mode is 'generate_attention': 
+                    self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
+                                                                            monotonic_attention=False,
+                                                                            prev_max_attentions=None)
 
             with tf.variable_scope("AudioDec"):
                 self.Y_logits, self.Y = AudioDec(self.hp, self.R, training=self.training, speaker_codes=self.speakers, reuse=self.reuse) # (B, T/r, n_mels)
