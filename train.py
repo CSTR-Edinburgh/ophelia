@@ -224,8 +224,15 @@ def main_work():
             sv.saver.save(sess, stem)
 
             ### Check if we should archive (to files which won't be overwritten):
+            already_saved_this_epoch = False
             if hp.save_every_n_epochs:
                 if epoch % hp.save_every_n_epochs == 0:
+                    info('Archive model %s'%(stem))
+                    for fname in glob.glob(stem + '*'):
+                        shutil.copy(fname, logdir + '/archive/')
+                    already_saved_this_epoch = True
+            if hp.save_first_n_epochs and not already_saved_this_epoch:
+                if epoch <= hp.save_first_n_epochs:
                     info('Archive model %s'%(stem))
                     for fname in glob.glob(stem + '*'):
                         shutil.copy(fname, logdir + '/archive/')
