@@ -42,7 +42,7 @@ Is this segment word final?"
       ( format t "<_START_> " )
       (mapcar
        (lambda (x)
-            ( if (not (equal? (item.name x) "#") )   ;; TODO: unhardcode silent symbols
+            ( if (not (equal? (item.name x) "pau") )   ;; TODO: unhardcode silent symbols
               (format t "%s " (item.name x) )
             )
             (if (seg_word_final x) 
