@@ -92,13 +92,29 @@ class Hyperparams(object):
             if inspect.ismodule(value): # e.g. from os imported at top of config
                 continue
             setattr(self, key, module_object.__dict__[key])
-     
+    def validate(self):
+        '''
+        Supply defaults for various thing of appropriate type if missing -- 
+        TODO: Currently this is just to supply values for variables added later in development.
+        Should we have some filling in of defaults like this more permanently, or should
+        everything be explicitly set in a config file?
+        '''
+        ## lists:
+        for varname in ['initialise_weights_from_existing', 'update_weights']:
+            if not hasattr(self, varname):
+                setattr(self, varname, [])
+
+
+
 def load_config(config_fname):        
     config = os.path.abspath(config_fname)
     assert os.path.isfile(config)
     settings = imp.load_source('config', config)
     hp = Hyperparams(settings)
+    hp.validate()
     return hp
+
+
 
 ### https://stackoverflow.com/questions/1325673/how-to-add-property-to-a-class-dynamically
 
