@@ -8,9 +8,9 @@ import inspect
 CONFIG_DEFAULTS = [
     ('initialise_weights_from_existing', [], ''),
     ('update_weights', [], ''),
-    (num_threads, 8, 'how many threads get_batch should use to build training batches of data (default: 8)'),
-    (plot_attention_every_n_epochs, 0, 'set to 0 if you do not wish to plot attention matrices'),
-    (num_sentences_to_plot_attention, 0 'number of sentences to plot attention matrices for')
+    ('num_threads', 8, 'how many threads get_batch should use to build training batches of data (default: 8)'),
+    ('plot_attention_every_n_epochs', 0, 'set to 0 if you do not wish to plot attention matrices'),
+    ('num_sentences_to_plot_attention', 0, 'number of sentences to plot attention matrices for')
 ]
 
 ## Intended to have hp as a module, but this doesn't allow pickling and therefore 
