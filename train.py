@@ -155,6 +155,21 @@ def main_work():
             ## later:    lt  -f has_inf_or_nan -n .*AudioEnc.*
             os.system('rm -rf {}/tmp_tfdbg/'.format(logdir))
             sess = tf_debug.LocalCLIDebugWrapperSession(sess, dump_root=logdir+'/tmp_tfdbg/')       
+
+        if hp.initialise_weights_from_existing:
+            info('=====Initialise some variables from existing model(s)=====') 
+            sess.graph._unsafe_unfinalize() ## !!! https://stackoverflow.com/questions/41798311/tensorflow-graph-is-finalized-and-cannot-be-modified/41798401
+            for (scope, checkpoint) in hp.initialise_weights_from_existing:
+                var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope)
+                info('----From existing model %s:----'%(checkpoint))  
+                if var_list: ## will be empty when training t2m but looking at ssrn
+                    saver = tf.train.Saver(var_list=var_list)
+                    saver.restore(sess, checkpoint)         
+                    for var in var_list:
+                        info('   %s'%(var.name))    
+                else:
+                    info('   No variables!')   
+                info('========================================================') 
              
         if hp.restart_from_savepath: #set this param to list: [path_to_t2m_model_folder, path_to_ssrn_model_folder]
             # info('Restart from these paths:')

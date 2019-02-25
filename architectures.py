@@ -73,14 +73,30 @@ class Graph(object):
             
 
     def build_training_scheme(self):
+        '''
+        hp.update_weights: list of strings of regular expressions used to match
+        scope prefixes of variables with tf.get_collection. Only these will be updated
+        by the graph's train_op: others will be frozen in training.
+        '''
+
         hp = self.hp
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
         self.lr = learning_rate_decay(hp.lr, self.global_step)
         self.optimizer = tf.train.AdamOptimizer(learning_rate=self.lr)
         tf.summary.scalar("lr", self.lr)
 
+        
+        if self.hp.update_weights:
+            train_variables = filter_variables_for_update(self.hp.update_weights)
+            print ('Subset of trainable variables chosen for finetuning.') ## TODO: add to logging!
+            print ('Variables not in this list will remain frozen:')
+            for variable in train_variables:
+                print (variable.name)
+        else:
+            train_variables = None ## default value -- everything included in compute_gradients
+
         ## gradient clipping
-        self.gvs = self.optimizer.compute_gradients(self.loss)
+        self.gvs = self.optimizer.compute_gradients(self.loss, var_list=train_variables)  ## var_list: Optional list or tuple of tf.Variable to update to minimize loss
         self.clipped = []
         for grad, var in self.gvs:
             grad = tf.clip_by_value(grad, -1., 1.)
@@ -267,3 +283,15 @@ class BabblerGraph(Graph):
         tf.summary.image('train/mel_gt', tf.expand_dims(tf.transpose(self.mels[:1], [0, 2, 1]), -1))
         tf.summary.image('train/mel_hat', tf.expand_dims(tf.transpose(self.Y[:1], [0, 2, 1]), -1))
 
+
+
+def filter_variables_for_update(update_weights):
+    to_train = [] 
+    for pattern_string in update_weights:
+        variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, pattern_string)
+        for variable in variables:
+            if variable not in to_train:
+                to_train.append(variable)
+    return to_train
+
+   
