@@ -23,7 +23,8 @@ from utils import spectrogram2wav
 from utils import split_streams, magphase_synth_from_compressed 
 from data_load import load_data
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
-from libutil import safe_makedir, basename, load_config
+from libutil import safe_makedir, basename
+from configuration import load_config
 
 
 def start_clock(comment):

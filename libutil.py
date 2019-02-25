@@ -6,8 +6,7 @@ import os
 import re
 import numpy as np
 import codecs
-import imp
-import inspect
+
 
 
 def safe_makedir(dir):
@@ -81,44 +80,3 @@ def read_floats_from_8bit(fname):
     assert (data.max() <= 1.0) and (data.min() >= 0.0), (data.min(), data.max())
     return data
 
-## Intended to have hp as a module, but this doesn't allow pickling and therefore 
-## use in parallel processing. So, convert module into an object of arbitrary type 
-## ("Hyperparams") having same attributes: 
-class Hyperparams(object):
-    def __init__(self, module_object):
-        for (key, value) in module_object.__dict__.items():
-            if key.startswith('_'):
-                continue
-            if inspect.ismodule(value): # e.g. from os imported at top of config
-                continue
-            setattr(self, key, module_object.__dict__[key])
-    def validate(self):
-        '''
-        Supply defaults for various thing of appropriate type if missing -- 
-        TODO: Currently this is just to supply values for variables added later in development.
-        Should we have some filling in of defaults like this more permanently, or should
-        everything be explicitly set in a config file?
-        '''
-        ## lists:
-        for varname in ['initialise_weights_from_existing', 'update_weights']:
-            if not hasattr(self, varname):
-                setattr(self, varname, [])
-
-
-
-def load_config(config_fname):        
-    config = os.path.abspath(config_fname)
-    assert os.path.isfile(config)
-    settings = imp.load_source('config', config)
-    hp = Hyperparams(settings)
-    hp.validate()
-    return hp
-
-
-
-### https://stackoverflow.com/questions/1325673/how-to-add-property-to-a-class-dynamically
-
-# class atdict(dict):
-#     __getattr__= dict.__getitem__
-#     __setattr__= dict.__setitem__
-#     __delattr__= dict.__delitem__

@@ -16,7 +16,8 @@ import numpy as np
 import tqdm
 
 from data_load import load_data
-from libutil import safe_makedir, load_config
+from libutil import safe_makedir
+from configuration import load_config
 from utils import load_spectrograms
 
 def proc(fpath, hp):

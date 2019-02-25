@@ -12,7 +12,8 @@ from concurrent.futures import ProcessPoolExecutor
 
 from argparse import ArgumentParser
 
-from libutil import basename, save_floats_as_8bit, load_config, safe_makedir
+from libutil import basename, save_floats_as_8bit, safe_makedir
+from configuration import load_config
 
 def proc(fpath, text_length, hp):
     

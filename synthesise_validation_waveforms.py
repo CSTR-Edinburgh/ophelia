@@ -21,7 +21,7 @@ from concurrent.futures import ProcessPoolExecutor
 import tensorflow as tf
 from architectures import SSRNGraph
 from synthesize import make_mel_batch, split_batch, synth_mel2mag
-from libutil import load_config
+from configuration import load_config
 
 
 def synth_wave(hp, magfile):

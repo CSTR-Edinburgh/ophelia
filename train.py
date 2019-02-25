@@ -20,7 +20,8 @@ from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
 from data_load import load_data
 from synthesize import synth_text2mel, synth_mel2mag, split_batch, make_mel_batch, synth_codedtext2mel, get_text_lengths, encode_text
 from objective_measures import compute_dtw_error, compute_simple_LSD
-from libutil import basename, safe_makedir, load_config
+from libutil import basename, safe_makedir
+from configuration import load_config
 from utils import plot_alignment
 
 import logger_setup
