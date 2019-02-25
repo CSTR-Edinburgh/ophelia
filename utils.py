@@ -66,7 +66,7 @@ def get_spectrograms(hp, fpath):
 
     return mel, mag
 
-def spectrogram2wav(hp, mag):
+def spectrogram2wav(hp, mag, trim_output=False):
     '''# Generate wave file from linear magnitude spectrogram
 
     Args:
@@ -90,9 +90,9 @@ def spectrogram2wav(hp, mag):
     # de-preemphasis
     wav = signal.lfilter([1], [1, -hp.preemphasis], wav)
 
-    # trim
-    wav, _ = librosa.effects.trim(wav)
-
+    if trim_output: # removed this as default, as we now do early stopping in generation
+        wav, _ = librosa.effects.trim(wav)
+    
     return wav.astype(np.float32)
 
 def griffin_lim(hp, spectrogram):
