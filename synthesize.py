@@ -280,8 +280,9 @@ def babble(hp, num_sentences=0):
 def synthesize(hp, speaker_id='', num_sentences=0):
     assert hp.vocoder=='griffin_lim', 'Other vocoders than griffin_lim not yet supported'
 
-    # Load data
-    (fpaths, L) = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
+    dataset = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
+    fpaths, L = dataset['fpaths'], dataset['texts']
+
     bases = [basename(fpath) for fpath in fpaths]
 
     # Ensure we aren't trying to generate more utterances than are actually in our test_transcript
@@ -317,7 +318,7 @@ def synthesize(hp, speaker_id='', num_sentences=0):
         ### TODO: after futher efficiency testing, remove this fork
         if 1:  ### efficient route -- only make K&V once  ## 3.86, 3.70, 3.80 seconds (2 sentences)
             text_lengths = get_text_lengths(L)
-            K, V = encode_text(hp, L, g1, sess, speaker_data=None)
+            K, V = encode_text(hp, L, g1, sess, speaker_data=speaker_data)
             Y, lengths, alignments = synth_codedtext2mel(hp, K, V, text_lengths, g1, sess, speaker_data=speaker_data)
         else: ## 5.68, 5.43, 5.38 seconds (2 sentences)
             Y, lengths = synth_text2mel(hp, L, g1, sess, speaker_data=speaker_data)

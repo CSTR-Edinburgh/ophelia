@@ -43,12 +43,16 @@ def phones_normalize(text, char2idx):
             sys.exit('Phone %s not listed in phone set'%(phone))
     return phones
 
-def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
+def load_data(hp, mode="train"):
     '''Loads data
       Args:
           mode: "train" / "validation" / "synthesize".
     '''
+    assert mode in ('train', 'synthesis', 'validation')
     logging.info('Start loading data in mode: %s'%(mode))
+
+    get_speaker_codes = ( hp.multispeaker != []) ## False if hp.multispeaker is empty list
+    if mode=='synthesis': get_speaker_codes = False ## never read speaker from transcript for synthesis -- take user-specified speaker instead
 
     # Load vocabulary
     char2idx, idx2char = load_vocab(hp)
@@ -120,7 +124,7 @@ def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
         text_lengths.append(text_length)
 
         if get_speaker_codes:
-            assert len(fields) >= 5
+            assert len(fields) >= 5, fields
         if len(fields) >= 5:
             speaker = fields[4]
             speaker_ix = speaker2ix[speaker]
@@ -136,49 +140,83 @@ def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
     logging.info ('Additional sentences skipped with > max_N (%s) letters/phones: %s'%(hp.max_N, too_long_count_text))
  
 
+
+
+    if mode == 'train' and hp.n_utts > 0:
+        n_utts = hp.n_utts
+        assert n_utts <= len(fpaths)
+        logging.info ('Take first %s (n_utts) sentences for training'%(n_utts))
+        fpaths = fpaths[:n_utts]
+        text_lengths = text_lengths[:n_utts]
+        texts = texts[:n_utts]
+        if get_speaker_codes:
+            speakers = speakers[:n_utts]
+
     if mode == 'train':
-        texts = [text.tostring() for text in texts]  
+        ## Return string representation which will be parsed with tf's decode_raw:
+        texts = [text.tostring() for text in texts] 
         if get_speaker_codes:
-            speakers = [speaker.tostring() for speaker in speakers]         
-        if n_utts > 0:
-            assert hp.n_utts <= len(fpaths)
-            logging.info ('Take first %s (n_utts) sentences'%(n_utts))
-            if get_speaker_codes:
-                return fpaths[:n_utts], text_lengths[:n_utts], texts[:n_utts], speakers[:n_utts]
-            else:
-                return fpaths[:n_utts], text_lengths[:n_utts], texts[:n_utts]
-        else:  
-            if get_speaker_codes:
-                return fpaths, text_lengths, texts, speakers
-            else:  
-                return fpaths, text_lengths, texts
-    elif mode=='validation':
-        #texts = [text for text in texts if len(text) <= hp.max_N]
+            speakers = [speaker.tostring() for speaker in speakers]      
+
+    if mode in ['validation', 'synthesis']:
+        ## Prepare a batch of 'stacked texts'
         stacked_texts = np.zeros((len(texts), hp.max_N), np.int32)
         for i, text in enumerate(texts):
             stacked_texts[i, :len(text)] = text
-        if get_speaker_codes:
-            return fpaths, stacked_texts, speakers
-        else:
-            return fpaths, stacked_texts
-    else:
-        assert mode=='synthesis'
-        stacked_texts = np.zeros((len(texts), hp.max_N), np.int32)
-        for i, text in enumerate(texts):
-            stacked_texts[i, :len(text)] = text
-        return (fpaths, stacked_texts) ## fpaths only a way to get bases -- wav files probably do not exist
+        texts = stacked_texts
+
+    dataset = {}
+    dataset['texts'] = texts
+    dataset['fpaths'] = fpaths ## at synthesis, fpaths only a way to get bases -- wav files probably do not exist
+    dataset['text_lengths'] = text_lengths ## only used in training (where length information lost due to string format)
+    if get_speaker_codes:
+        dataset['speakers'] = speakers
+    return dataset
+
+    ### Older version:- TODO clean up at some point
+    # if mode == 'train':
+    #     texts = [text.tostring() for text in texts]  
+    #     if get_speaker_codes:
+    #         speakers = [speaker.tostring() for speaker in speakers]         
+    #     if n_utts > 0:
+    #         assert hp.n_utts <= len(fpaths)
+    #         logging.info ('Take first %s (n_utts) sentences'%(n_utts))
+    #         if get_speaker_codes:
+    #             return fpaths[:n_utts], text_lengths[:n_utts], texts[:n_utts], speakers[:n_utts]
+    #         else:
+    #             return fpaths[:n_utts], text_lengths[:n_utts], texts[:n_utts]
+    #     else:  
+    #         if get_speaker_codes:
+    #             return fpaths, text_lengths, texts, speakers
+    #         else:  
+    #             return fpaths, text_lengths, texts
+    # elif mode=='validation':
+    #     #texts = [text for text in texts if len(text) <= hp.max_N]
+    #     stacked_texts = np.zeros((len(texts), hp.max_N), np.int32)
+    #     for i, text in enumerate(texts):
+    #         stacked_texts[i, :len(text)] = text
+    #     if get_speaker_codes:
+    #         return fpaths, stacked_texts, speakers
+    #     else:
+    #         return fpaths, stacked_texts
+    # else:
+    #     assert mode=='synthesis'
+    #     stacked_texts = np.zeros((len(texts), hp.max_N), np.int32)
+    #     for i, text in enumerate(texts):
+    #         stacked_texts[i, :len(text)] = text
+    #     return (fpaths, stacked_texts) ## fpaths only a way to get bases -- wav files probably do not exist
 
 
 
-def get_batch(hp, batchsize, get_speaker_codes=False, n_utts=0):
+def get_batch(hp, batchsize):
     """Loads training data and put them in queues"""
     # print ('get_batch')
     with tf.device('/cpu:0'):
         # Load data
-        if get_speaker_codes:
-            fpaths, text_lengths, texts, speakers = load_data(hp, get_speaker_codes=True, n_utts=n_utts) 
-        else:
-            fpaths, text_lengths, texts = load_data(hp, n_utts=n_utts) 
+        dataset = load_data(hp) 
+        fpaths, text_lengths, texts = dataset['fpaths'], dataset['text_lengths'], dataset['texts']
+        if hp.multispeaker:
+            speakers = dataset['speakers']
 
         maxlen, minlen = max(text_lengths), min(text_lengths)
 
@@ -186,7 +224,7 @@ def get_batch(hp, batchsize, get_speaker_codes=False, n_utts=0):
         num_batch = len(fpaths) // batchsize
 
         # Create Queues & parse
-        if get_speaker_codes:
+        if hp.multispeaker:
             fpath, text_length, text, speaker = tf.train.slice_input_producer([fpaths, text_lengths, texts, speakers], shuffle=True)
             speaker = tf.decode_raw(speaker, tf.int32)
         else:   
@@ -254,7 +292,7 @@ def get_batch(hp, batchsize, get_speaker_codes=False, n_utts=0):
         # Add shape information
         fname.set_shape(())
         text.set_shape((None,))
-        if get_speaker_codes:
+        if hp.multispeaker:
             speaker.set_shape((None,))
         if hp.attention_guide_dir:
             attention_guide.set_shape((None,None))  ## will be letters x frames
@@ -264,7 +302,7 @@ def get_batch(hp, batchsize, get_speaker_codes=False, n_utts=0):
         # Batching
         tensordict = {'text': text, 'mel': mel, 'mag': mag, 'fname': fname}
         
-        if get_speaker_codes:
+        if hp.multispeaker:
             tensordict['speaker'] = speaker  
         if hp.attention_guide_dir:
             tensordict['attention_guide'] = attention_guide

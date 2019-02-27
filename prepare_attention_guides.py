@@ -44,8 +44,9 @@ def main_work():
     hp = load_config(opts.config)
     assert hp.attention_guide_dir
     
-    [fpaths, text_lengths] = load_data(hp)[:2]
-    
+    dataset = load_data(hp) 
+    fpaths, text_lengths = dataset['fpaths'], dataset['text_lengths']
+
     assert os.path.exists(hp.coarse_audio_dir)
     safe_makedir(hp.attention_guide_dir)
 

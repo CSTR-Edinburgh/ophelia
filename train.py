@@ -78,10 +78,11 @@ def main_work():
 
 
     ### Prepare reference data for validation set:  ### TODO: alternative to holding in memory?
+    dataset = load_data(hp, mode="validation") 
+    valid_filenames, validation_text = dataset['fpaths'], dataset['texts']
     if hp.multispeaker:
-        (valid_filenames, validation_text, speaker_codes) = load_data(hp, mode="validation", get_speaker_codes=True)
+        speaker_codes = dataset['speakers']
     else:
-        (valid_filenames, validation_text) = load_data(hp, mode="validation")
         speaker_codes = None  ## default
 
 

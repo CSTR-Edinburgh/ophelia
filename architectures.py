@@ -35,7 +35,7 @@ class Graph(object):
         ## mags: Magnitude. (B, T, n_fft//2+1) float32
         hp = self.hp
         if self.mode is 'train':
-            batchdict = get_batch(hp, self.get_batchsize(), get_speaker_codes=hp.multispeaker, n_utts=hp.n_utts)
+            batchdict = get_batch(hp, self.get_batchsize())
 
             if 0: print (batchdict) ; print (batchdict.keys()) ; sys.exit('vsfbd')
 
