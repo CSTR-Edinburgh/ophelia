@@ -12,11 +12,12 @@ import sys
 import librosa
 import os, copy
 import matplotlib
-matplotlib.use('pdf')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy import signal
 import numpy as np
 import tensorflow as tf
+# from adjustText import adjust_text
 
 
 def get_spectrograms(hp, fpath):
@@ -116,32 +117,80 @@ def invert_spectrogram(hp, spectrogram):
     return librosa.istft(spectrogram, hp.hop_length, win_length=hp.win_length, window="hann")
 
 # TODO add functionality so that we can also plot on phone identities to the encoder states on the y-axis
-def plot_alignment(hp, alignment, utt_idx, t2m_epoch, dir=''):
+def plot_alignment(hp, alignment, chars, utt_name, t2m_epoch, monotonic, ground_truth, dir):
     """Plots the alignment.
 
     Args:
       hp: Hyperparams file
       alignment: A numpy array with shape of (encoder_steps, decoder_steps)
-      utt_idx: The index of the utterance that we are plotting, for naming/titling purposes.
+      utt_name: The intended name of the current utterance being plotted, for naming/titling purposes.
       t2m_epoch: (int) training epoch reached for text2mel model.
       dir: Output path.
+
+    Return: 
+      basename: returns the basename of the file to be plotted, so that it can be used for other purposes
     """
     if not dir:
         dir = hp.logdir
     if not os.path.exists(dir): os.mkdir(dir)
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(16,12))
     im = ax.imshow(alignment)
 
+    if monotonic:
+        monotonic_str = 'monotonic'
+    else:
+        monotonic_str = 'non-monotonic'
+
+    if ground_truth:
+        ground_truth_str = 'g-truth_mels'
+    else:
+        ground_truth_str = 'gen_mels'
+
+    #reformat char so that we can save space when plotting the char on the figure
+    def reformat_char(c):
+        if c == '<>':
+            return '_'
+        return c.strip('<').strip('>').strip('_')
+
     fig.colorbar(im)
-    plt.title('Cfg={}, t2m_epoch={}, utt=#{}'.format(
-        hp.config_name, t2m_epoch, utt_idx))
+    plt.title('{}, {}, {}, t2m_epoch={}, utt={}'.format(hp.config_name, monotonic_str, ground_truth_str, t2m_epoch, utt_name))
     plt.ylabel('Encoder timestep')
     plt.xlabel('Decoder timestep')
+    # print(alignment.shape[0], alignment.shape[1])
 
-    plt.savefig('{}/alignment_{}_utt{}_epoch{}.png'.format(dir,
-                                                           hp.config_name, utt_idx, t2m_epoch), format='png')
+    plot_on_attention_matrix = True
+    if plot_on_attention_matrix: #plot phone label directly on the alignment
+        #get position of decoder timestep that has mean attention energy
+        means = []
+        for row in alignment: #each row is attention energies
+            row_weighted_sum = np.sum(np.arange(0, hp.max_T) * row)
+            mean_position = row_weighted_sum / np.sum(row)
+            if np.isnan(mean_position): #caused by divide by 0
+                means.append(0) #padding char
+            else:
+                means.append(mean_position)
+        # print(means)
+        texts = []
+        for x_pos, y_pos, char in zip(means, np.arange(0, hp.max_N), chars):
+            # ax.text(x_pos, y_pos, char, color='white', fontsize=4)
+            char = reformat_char(char)
+            ax.annotate(char, xy=(x_pos, y_pos), xytext=(20,20), textcoords='offset points', color='white', arrowprops=dict(arrowstyle='->', color='white'), fontsize=6)
+            # texts.append(plt.text(x_pos, y_pos, char, ha='center', va='center', color='white', fontsize=3))
+
+        # print('starting adjust_text...')
+        # adjust_text(texts, arrowprops=dict(arrowstyle='->', color='white')) #this might take a while to run, use if u want a figure for presentation
+
+    else: #plot on y-ticks
+        plt.yticks(np.arange(0, hp.max_N) , chars, fontsize=4)
+        ax.set_yticks(np.arange(-0.5, hp.max_N), minor=True)
+        ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.5) 
+
+    basename = 'alignment_{}_{}_{}_utt{}_epoch{}'.format(hp.config_name, monotonic_str, ground_truth_str, utt_name, t2m_epoch)
+    path = dir + '/' + basename + '.pdf'
+    plt.savefig(path, format='pdf')
     plt.close(fig)
+    return basename
 
 def get_attention_guide(xdim, ydim, g=0.2):
     '''Guided attention. Refer to page 3 on the paper.'''

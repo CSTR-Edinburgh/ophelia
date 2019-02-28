@@ -12,7 +12,7 @@ from utils import get_global_attention_guide, learning_rate_decay
 class Graph(object):
 
     def __init__(self, hp, mode="train", reuse=None):
-        assert mode in ['train', 'synthesize', 'generate_attention'] 
+        assert mode in ['train', 'synthesize', 'synthesize_non_monotonic'] 
         self.mode = mode
         self.training = True if mode=="train" else False
         self.reuse = reuse
@@ -64,12 +64,14 @@ class Graph(object):
                 self.speakers = tf.placeholder(tf.int32, shape=(None, None))
             self.mels = tf.placeholder(tf.float32, shape=(None, None, hp.n_mels))
             self.prev_max_attentions = tf.placeholder(tf.int32, shape=(None,))
-        elif self.mode is 'generate_attention':
+        elif self.mode is 'synthesize_non_monotonic':
             self.L = tf.placeholder(tf.int32, shape=(None, None))
             self.speakers = None
             if hp.multispeaker:
                 self.speakers = tf.placeholder(tf.int32, shape=(None, None))
             self.mels = tf.placeholder(tf.float32, shape=(None, None, hp.n_mels))
+            self.prev_max_attentions = tf.placeholder(tf.int32, shape=(None,))
+
             
 
     def build_training_scheme(self):
@@ -153,7 +155,7 @@ class Text2MelGraph(Graph):
                     self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
                                                                             monotonic_attention=False,
                                                                             prev_max_attentions=self.prev_max_attentions)
-                elif self.mode is 'generate_attention': 
+                elif self.mode is 'synthesize_non_monotonic': 
                     self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
                                                                             monotonic_attention=False,
                                                                             prev_max_attentions=None)

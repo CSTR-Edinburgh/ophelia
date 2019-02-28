@@ -17,7 +17,7 @@ import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
-from data_load import load_data
+from data_load import load_data, load_vocab
 from synthesize import synth_text2mel, synth_mel2mag, split_batch, make_mel_batch, synth_codedtext2mel, get_text_lengths, encode_text
 from objective_measures import compute_dtw_error, compute_simple_LSD
 from libutil import basename, safe_makedir, load_config
@@ -50,13 +50,13 @@ def compute_validation(hp, model_type, epoch, inputs, synth_graph, sess, speaker
     return score
 
 
-def get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_inputs, attention_mels, alignment_dir):
+def get_and_plot_alignments(hp, epoch, attention_graph, sess, chars, attention_inputs, attention_mels, alignment_dir):
     return_values = sess.run([attention_graph.alignments], # use attention_graph to obtain attention maps for a few given inputs and mels
                              {attention_graph.L: attention_inputs, 
                               attention_graph.mels: attention_mels}) 
     alignments = return_values[0] # sess run returns a list, so unpack this list
-    for i in range(hp.num_sentences_to_plot_attention):
-        plot_alignment(hp, alignments[i], i+1, epoch, dir=alignment_dir)
+    for i in range(len(attention_inputs)):
+        plot_alignment(hp, alignments[i], chars=chars[i], utt_name=i+1, t2m_epoch=epoch, monotonic=False, ground_truth=True, dir=alignment_dir)
 
 def main_work():
 
@@ -116,20 +116,28 @@ def main_work():
     ## Get the text and mel inputs for the utts you would like to plot attention graphs for 
     if hp.plot_attention_every_n_epochs and model_type=='t2m': #check if we want to plot attention
         # TODO do we want to generate and plot attention for validation or training set sentences??? modify attention_inputs accordingly...
-        attention_inputs = validation_text[:hp.num_sentences_to_plot_attention]
+        attention_inputs = validation_text[:hp.num_sentences_to_plot_attention, :]
         attention_mels = validation_mels[:hp.num_sentences_to_plot_attention]
         attention_mels = np.array(attention_mels) #TODO should be able to delete this line...?        
-        attention_mels_array = np.zeros((hp.num_sentences_to_plot_attention, hp.max_T, hp.n_mels), np.float32) # create fixed size array to hold attention mels
-        for i in range(hp.num_sentences_to_plot_attention): # copy data into this fixed sized array
+        attention_mels_array = np.zeros((len(attention_inputs), hp.max_T, hp.n_mels), np.float32) # create empty fixed size array to hold attention mels
+        for i in range(len(attention_inputs)): # copy data into this fixed sized array
             attention_mels_array[i, :attention_mels[i].shape[0], :attention_mels[i].shape[1]] = attention_mels[i]
         attention_mels = attention_mels_array # rename for convenience
+        #get phone seq
+        _, idx2char = load_vocab(hp)
+        attention_chars = attention_inputs.tolist()
+        # print('attention_inputs', attention_inputs.shape, attention_inputs[0].shape)
+        for row in range(attention_inputs.shape[0]):
+            for col in range(attention_inputs.shape[1]):
+                # print(attention_inputs[row][col], idx2char[attention_inputs[row][col]])
+                attention_chars[row][col] = idx2char[attention_inputs[row][col]]
 
     ## Map to appropriate type of graph depending on model_type:
     AppropriateGraph = {'t2m': Text2MelGraph, 'ssrn': SSRNGraph, 'babbler': BabblerGraph}[model_type]
 
     g = AppropriateGraph(hp) ; info("Training graph loaded")
     synth_graph = AppropriateGraph(hp, mode='synthesize', reuse=True) ; info("Synthesis graph loaded") #reuse=True ensures that 'synth_graph' and 'attention_graph' share weights with training graph 'g'
-    attention_graph = AppropriateGraph(hp, mode='generate_attention', reuse=True) ; info("Atttention generating graph loaded")
+    attention_graph = AppropriateGraph(hp, mode='synthesize_non_monotonic', reuse=True) ; info("Atttention generating graph loaded")
     #TODO is loading three graphs a problem for memory usage?
 
     if 0:
@@ -190,7 +198,7 @@ def main_work():
 
         #plot attention generated from freshly initialised model
         if hp.plot_attention_every_n_epochs and model_type == 't2m' and epoch == 0: # ssrn model doesn't generate alignments 
-            get_and_plot_alignments(hp, epoch - 1, attention_graph, sess, attention_inputs, attention_mels, logdir + "/alignments") # epoch-1 refers to freshly initialised model
+            get_and_plot_alignments(hp, epoch - 1, attention_graph, sess, attention_chars, attention_inputs, attention_mels, logdir + "/alignments") # epoch-1 refers to freshly initialised model
  
         current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference)
         info('validation epoch {0}: {1:0.3f}'.format(epoch, current_score))
@@ -217,7 +225,7 @@ def main_work():
 
             ### End of epoch: plot attention matrices? #################################
             if hp.plot_attention_every_n_epochs and model_type == 't2m' and epoch % hp.plot_attention_every_n_epochs == 0: # ssrn model doesn't generate alignments 
-                get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_inputs, attention_mels, logdir + "/alignments")
+                get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_chars, attention_inputs, attention_mels, logdir + "/alignments")
 
             ### Save end of each epoch (all but the most recent 5 will be overwritten):       
             stem = logdir + '/model_epoch_{0}'.format(epoch)

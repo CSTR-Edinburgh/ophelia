@@ -21,9 +21,11 @@ from tqdm import tqdm
 from utils import plot_alignment
 from utils import spectrogram2wav
 from utils import split_streams, magphase_synth_from_compressed 
-from data_load import load_data
+from data_load import load_data, load_vocab
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
 from libutil import safe_makedir, basename, load_config
+
+import pickle 
 
 
 def start_clock(comment):
@@ -158,20 +160,73 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None):
         alignments[:, :, j] = _alignments[:, :, j] # build up attention matrix frame-by-frame
         prev_max_attentions = _max_attentions[:, j]
 
+        ##NOTE JASON - commented out below code as it for some reason fails when monotonic attention is turned off...
         ## Work out if we've reach end of any/all sentences in batch:-
-        reached_end = (_max_attentions[:, j] >= ends) ## is attention focussing on or beyond end of textual sentence?
-        endcounts += reached_end
-        for (i,(current, endcount)) in enumerate(zip(t_ends, endcounts)):
-            if current == hp.max_T: ## if hasn't changed from initialisation value
-                if endcount >= endcount_threshold:
-                    t_ends[i] = j
-        ## Bail out early if all sentences seem to be finished:
-        if (t_ends < hp.max_T).all():
-            print('finished here:')
-            print(t_ends)
-            break
+        # reached_end = (_max_attentions[:, j] >= ends) ## is attention focussing on or beyond end of textual sentence?
+        # endcounts += reached_end
+        # for (i,(current, endcount)) in enumerate(zip(t_ends, endcounts)):
+        #     if current == hp.max_T: ## if hasn't changed from initialisation value
+        #         if endcount >= endcount_threshold:
+        #             t_ends[i] = j
+        # ## Bail out early if all sentences seem to be finished:
+        # if (t_ends < hp.max_T).all():
+        #     print('finished here:')
+        #     print(t_ends)
+        #     break
 
     return (Y, t_ends.tolist(), alignments)
+
+def synth_codedtext2mel_gtruth(hp, K, V, gtruth_mels, ends, g, sess, speaker_data=None):
+    '''
+    K, V: coded texts
+    g: synthesis graph
+    sess: Session
+    '''
+    alignments = np.zeros((len(ends), hp.max_N, hp.max_T), np.float32)
+    prev_max_attentions = np.zeros((len(K),), np.int32)
+
+    ### -- set up counters to detect & record sentence end, used for trimming and early stopping --
+
+    endcounts = np.zeros(ends.shape, dtype=int)  ## counts of the number of times attention has focussed (max) on these indices
+    endcount_threshold = 1 ## number of times we require attention to focus on end before we consider synthesis finished
+    t_ends = np.ones(ends.shape, dtype=int) * hp.max_T  ## The frame index when endcounts is sufficiently high, which we'll consider the end of the utterance
+                                                        ## NB: initialised to max_T -- will default to this.
+
+    t = start_clock('gen')
+    for j in tqdm(range(hp.max_T)):  # always run for max num of mel-frames
+        if hp.multispeaker:
+            _max_attentions, _alignments, = \
+                sess.run([ g.max_attentions, g.alignments],
+                         {g.K: K,
+                          g.V: V,
+                          g.mels: gtruth_mels,
+                          g.speakers: speaker_data,
+                          g.prev_max_attentions: prev_max_attentions}) ##
+        else:
+            _max_attentions, _alignments, = \
+                sess.run([ g.max_attentions, g.alignments],
+                         {g.K: K,
+                          g.V: V,
+                          g.mels: gtruth_mels,
+                          g.prev_max_attentions: prev_max_attentions}) ## osw: removed global_step from synth loop
+        alignments[:, :, j] = _alignments[:, :, j] # build up attention matrix frame-by-frame
+        prev_max_attentions = _max_attentions[:, j]
+
+        ##NOTE JASON - commented out below code as it for some reason fails when monotonic attention is turned off...
+        ## Work out if we've reach end of any/all sentences in batch:-
+        # reached_end = (_max_attentions[:, j] >= ends) ## is attention focussing on or beyond end of textual sentence?
+        # endcounts += reached_end
+        # for (i,(current, endcount)) in enumerate(zip(t_ends, endcounts)):
+        #     if current == hp.max_T: ## if hasn't changed from initialisation value
+        #         if endcount >= endcount_threshold:
+        #             t_ends[i] = j
+        # ## Bail out early if all sentences seem to be finished:
+        # if (t_ends < hp.max_T).all():
+        #     print('finished here:')
+        #     print(t_ends)
+        #     break
+
+    return alignments
 
 def encode_text(hp, L, g, sess, speaker_data=None):  
     if hp.multispeaker:
@@ -283,10 +338,28 @@ def synthesize(hp, speaker_id='', num_sentences=0):
     (fpaths, L) = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
     bases = [basename(fpath) for fpath in fpaths]
 
+    # Load vocab used for getting phone sequence from our inputs (used for plotting on attention diagrams)
+    _, idx2char = load_vocab(hp)
+
+    # Also retrieve ground truth mels so that we can get attention plots for them
+    mels = [np.load(hp.coarse_audio_dir + os.path.sep + basename(fpath)+'.npy') for fpath in fpaths]
+    mels_array = np.zeros((len(mels), hp.max_T, hp.n_mels), np.float32) # create empty fixed size array to hold mels
+    for i in range(len(mels)): # copy data into this fixed sized array
+        mels_array[i, :mels[i].shape[0], :mels[i].shape[1]] = mels[i]
+    mels = mels_array # rename for convenience
+
     # Ensure we aren't trying to generate more utterances than are actually in our test_transcript
     if num_sentences > 0:
         assert num_sentences < len(bases)
         L = L[:num_sentences, :]
+
+    # Get the input sequence phones/letters for each utterance (used to annotate attention diagrams)
+    L_chars = L.tolist()
+    for row in range(L.shape[0]):
+        for col in range(L.shape[1]):
+            # print(L[row][col], idx2char[L[row][col]])
+            L_chars[row][col] = idx2char[L[row][col]]
+    # print(L_chars[0])
 
     if speaker_id:
         speaker2ix = dict(zip(hp.speaker_list, range(len(hp.speaker_list))))
@@ -299,7 +372,10 @@ def synthesize(hp, speaker_id='', num_sentences=0):
 
     # Load graph 
     ## TODO: generalise to combine other types of models into a synthesis pipeline?
-    g1 = Text2MelGraph(hp, mode="synthesize"); print("Graph 1 (t2m) loaded")
+    if hp.monotonic_attention:
+        g1 = Text2MelGraph(hp, mode="synthesize"); print("Graph 1 (t2m) loaded")
+    else:
+        g1 = Text2MelGraph(hp, mode="synthesize_non_monotonic"); print("Graph 1 (t2m) loaded, without monotonic attention")
     g2 = SSRNGraph(hp, mode="synthesize"); print("Graph 2 (ssrn) loaded")
 
     with tf.Session() as sess:
@@ -317,7 +393,7 @@ def synthesize(hp, speaker_id='', num_sentences=0):
         if 1:  ### efficient route -- only make K&V once  ## 3.86, 3.70, 3.80 seconds (2 sentences)
             text_lengths = get_text_lengths(L)
             K, V = encode_text(hp, L, g1, sess, speaker_data=None)
-            Y, lengths, alignments = synth_codedtext2mel(hp, K, V, text_lengths, g1, sess, speaker_data=speaker_data)
+            Y, lengths, gen_alignments = synth_codedtext2mel(hp, K, V, text_lengths, g1, sess, speaker_data=speaker_data)
         else: ## 5.68, 5.43, 5.38 seconds (2 sentences)
             Y, lengths = synth_text2mel(hp, L, g1, sess, speaker_data=speaker_data)
         stop_clock(t)
@@ -337,10 +413,13 @@ def synthesize(hp, speaker_id='', num_sentences=0):
 
         # Generate wav files
         outdir = os.path.join(hp.sampledir, 't2m%s_ssrn%s'%(t2m_epoch, ssrn_epoch))
+        outdir = os.path.join(outdir, 'monotonic_attention') if hp.monotonic_attention else os.path.join(outdir, 'non-monotonic_attention')
         if speaker_id:
             outdir += '_speaker-%s'%(speaker_id)
         safe_makedir(outdir)
-        print("Generating wav files, will save to following dir: %s"%(outdir))
+        wavdir = os.path.join(outdir, 'wav')
+        safe_makedir(wavdir)
+        print("Generating wav files, will save to following dir: %s"%(wavdir))
         for i, mag in enumerate(Z):
             print("Working on %s"%(bases[i]))
             mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length
@@ -353,12 +432,38 @@ def synthesize(hp, speaker_id='', num_sentences=0):
                 wav = spectrogram2wav(hp, mag)
             else:
                 sys.exit('Unsupported vocoder type: %s'%(hp.vocoder))
-            write(outdir + "/{}.wav".format(bases[i]), hp.sr, wav)
+            write(wavdir + "/{}.wav".format(bases[i]), hp.sr, wav)
 
-        # Plot attention alignments 
-        for i in range(num_sentences):
-            plot_alignment(hp, alignments[i], utt_idx=i+1, t2m_epoch=t2m_epoch, dir=outdir)
+        # Plot synthesis attention alignments 
+        plots_dir = os.path.join(outdir, 'gen_alignment_plots')
+        safe_makedir(plots_dir)
+        for i in range(len(gen_alignments)):
+            # print(L_chars[i])
+            basefilename = plot_alignment(hp, gen_alignments[i], chars=L_chars[i], utt_name=bases[i], t2m_epoch=t2m_epoch, monotonic=hp.monotonic_attention, ground_truth=False, dir=plots_dir)
+        
+        prev_max_attentions = np.zeros((len(K),), np.int32)
 
+        # Plot ground truth mel attention alignments 
+        plots_dir = os.path.join(outdir, 'gtruth_alignment_plots')
+        safe_makedir(plots_dir)
+        if hp.monotonic_attention:
+            gtruth_alignments = synth_codedtext2mel_gtruth(hp, K, V, mels, text_lengths, g1, sess, speaker_data=speaker_data)
+        else:
+            return_values = sess.run([g1.alignments], 
+                                     {g1.L: L, 
+                                      g1.mels: mels}) 
+            gtruth_alignments = return_values[0] # sess run returns a list, so unpack this list
+        for i in range(len(gtruth_alignments)):
+            basefilename = plot_alignment(hp, gtruth_alignments[i], chars=L_chars[i], utt_name=bases[i], t2m_epoch=t2m_epoch, monotonic=hp.monotonic_attention, ground_truth=True, dir=plots_dir)
+
+        # Save attention matrices, phones, t_ends and other related information to disk
+        print('Saving alignments and other data to disk using pickle')
+        alignment_data_dir = os.path.join(outdir, 'alignment_data')
+        safe_makedir(alignment_data_dir)
+        for utt_name, gen_alignment, gtruth_alignment, L_char, length in zip(bases, gen_alignments, gtruth_alignments, L_chars, lengths):
+            monotonic_str = 'monotonic' if hp.monotonic_attention else 'non-monotonic'
+            pickle_file_name = '{}_{}_{}.pkl'.format(hp.config_name, monotonic_str, utt_name)
+            pickle.dump({'gen_alignment':gen_alignment, 'gtruth_alignment':gtruth_alignment, 'input_chars':L_char, 'decoder_timesteps':length}, open(os.path.join(alignment_data_dir, pickle_file_name), 'wb'))
 
 def main_work():
 
