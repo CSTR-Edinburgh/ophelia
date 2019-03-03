@@ -25,8 +25,15 @@ from utils import load_spectrograms, end_pad_for_reduction_shape_sync, \
 from tqdm import tqdm
 
 def load_vocab(hp):
-    char2idx = {char: idx for idx, char in enumerate(hp.vocab)}
-    idx2char = {idx: char for idx, char in enumerate(hp.vocab)}
+    vocab = hp.vocab # default
+    if 'speaker_dependent_phones' in hp.multispeaker:
+        vocab = [hp.vocab[0]]
+        for speaker in hp.speaker_list[1:]: ## assume first positions are just padding
+            for phone in hp.vocab[1:]:
+                vocab.append('%s_%s'%(phone, speaker))
+
+    char2idx = {char: idx for idx, char in enumerate(vocab)}
+    idx2char = {idx: char for idx, char in enumerate(vocab)}
     return char2idx, idx2char
 
 def text_normalize(text, hp):
@@ -38,8 +45,10 @@ def text_normalize(text, hp):
     text = re.sub("[ ]+", " ", text)
     return text
 
-def phones_normalize(text, char2idx):
+def phones_normalize(text, char2idx, speaker_code=''):
     phones = re.split('\s+', text.strip(' \n'))
+    if speaker_code: # then make speaker-dependent phones
+        phones = ['%s_%s'%(phone, speaker_code) for phone in phones]
     for phone in phones: 
         if phone not in char2idx:
             print(text)
@@ -109,8 +118,19 @@ def load_data(hp, mode="train"):
                 if hp.validpatt not in fname:
                     continue
 
+        ## get speaker before phones in case need to get speaker-dependent phones
+        if get_speaker_codes:
+            assert len(fields) >= 5, fields            
+            speaker = fields[4]
+            speaker_ix = speaker2ix[speaker]
+            speakers.append(np.array(speaker_ix, np.int32))    
+
         if hp.input_type == 'phones':
-            phones = phones_normalize(phones, char2idx) # in case of phones, all EOS markers are assumed included
+            if 'speaker_dependent_phones' in hp.multispeaker:
+                speaker_code = speaker
+            else:
+                speaker_code = ''
+            phones = phones_normalize(phones, char2idx, speaker_code=speaker_code) # in case of phones, all EOS markers are assumed included
             letters_or_phones = [char2idx[char] for char in phones]
         elif hp.input_type == 'letters':
             text = text_normalize(norm_text, hp) + "E"  # E: EOS
@@ -127,13 +147,7 @@ def load_data(hp, mode="train"):
 
         fpath = os.path.join(hp.waveforms, fname + ".wav")
         fpaths.append(fpath)
-        text_lengths.append(text_length)
-
-        if get_speaker_codes:
-            assert len(fields) >= 5, fields            
-            speaker = fields[4]
-            speaker_ix = speaker2ix[speaker]
-            speakers.append(np.array(speaker_ix, np.int32))                    
+        text_lengths.append(text_length)                
 
         if hp.merlin_label_dir: ## only get shape here -- get the data later
             label_length, label_dim = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")).shape
@@ -422,7 +436,7 @@ def get_batch(hp, batchsize):
         fname.set_shape(())
         text.set_shape((None,))
         if hp.multispeaker:
-            speaker.set_shape((None,))
+            speaker.set_shape((None,))  ## 1D?
         if hp.use_external_durations:
             duration_matrix.set_shape((None,None))  ## will be letters x frames
         if hp.attention_guide_dir:

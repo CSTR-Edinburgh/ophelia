@@ -43,10 +43,11 @@ class Graph(object):
                 batchdict['text'], batchdict['mel'], batchdict['mag'], batchdict['fname'], batchdict['num_batch'] 
 
             if hp.multispeaker:
-                ## check multispeaker config is valid:-
+                ## check multispeaker config is valid:- TODO: to config validation?
                 for position in hp.multispeaker:
                     assert position in ['text_encoder_input', 'text_encoder_towards_end', \
-                                'audio_decoder_input', 'ssrn_input', 'audio_encoder_input']
+                                'audio_decoder_input', 'ssrn_input', 'audio_encoder_input',\
+                                'learn_channel_contributions', 'speaker_dependent_phones']
                 self.speakers = batchdict['speaker'] 
             else:
                 self.speakers = None

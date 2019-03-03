@@ -10,7 +10,7 @@ Modified...
 from __future__ import print_function, division
 
 import tensorflow as tf
-
+from logging import info
 
 def embed(inputs, vocab_size, num_units, zero_pad=True, scope="embedding", reuse=None):
     '''Embeds a given tensor. 
@@ -75,6 +75,18 @@ def normalize(inputs,
     return outputs
 
 
+def learn_channel_contributions(input_tensor, codes, ncodes=1, reuse=None):
+    # codes (B, ?) Always 1D??
+    info('learn_channel_contributions; codes: %s'%(codes.shape))
+    nchannels = input_tensor.get_shape().as_list()[-1]
+    lcc_gate = embed(codes, vocab_size=ncodes, num_units=nchannels, \
+                  scope="lcc_embed", reuse=reuse) ## init weight mean 0.0 
+    lcc_gate = tf.nn.sigmoid(lcc_gate, "lcc_gate") ##    -> 0.5 after sigmoid
+    ## lcc_gate (B, filters)
+    #print(lcc_gate.shape)  # (32, ?, 512)
+    input_tensor = lcc_gate * input_tensor  ## Broadcast on time dimension
+    return input_tensor
+
 
 def conv1d(inputs,
            filters=None,
@@ -87,7 +99,8 @@ def conv1d(inputs,
            training=True,
            scope="conv1d",
            reuse=None,
-           normtype='layer'):
+           normtype='layer',
+           lcc=0, codes=None):
     '''
     Args:
       inputs: A 3-D tensor with shape of [batch, time, depth].
@@ -127,6 +140,9 @@ def conv1d(inputs,
 
         tensor = tf.layers.dropout(tensor, rate=dropout_rate, training=training)
 
+        if lcc: 
+          tensor = learn_channel_contributions(tensor, codes, ncodes=lcc, reuse=reuse)
+
     return tensor
 
 def hc(inputs,
@@ -140,7 +156,7 @@ def hc(inputs,
        training=True,
        scope="hc",
        reuse=None,
-       normtype='layer'):
+       normtype='layer', lcc=0, codes=None):
     '''
     Args:
       inputs: A 3-D tensor with shape of [batch, time, depth].
@@ -180,6 +196,10 @@ def hc(inputs,
         H2 = normalize(H2, scope="H2", normtype=normtype, reuse=reuse)
         H1 = tf.nn.sigmoid(H1, "gate")
         H2 = activation_fn(H2, "info") if activation_fn is not None else H2
+
+        if lcc:  ## LCC applied on transformation connections only
+          H2 = learn_channel_contributions(H2, codes, ncodes=lcc, reuse=reuse)
+
         tensor = H1*H2 + (1.-H1)*_inputs
 
         tensor = tf.layers.dropout(tensor, rate=dropout_rate, training=training)

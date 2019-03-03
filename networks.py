@@ -21,6 +21,8 @@ def TextEnc(hp, L, training=True, speaker_codes=None, reuse=None):
         K: Keys. (B, N, d)
         V: Values. (B, N, d)
     '''
+    if 'learn_channel_contributions' in hp.multispeaker:
+        lcc = hp.nspeakers
     i = 1
     tensor = embed(L,
                    vocab_size=len(hp.vocab),
@@ -40,13 +42,15 @@ def TextEnc(hp, L, training=True, speaker_codes=None, reuse=None):
                     dropout_rate=hp.dropout_rate,
                     activation_fn=tf.nn.relu,
                     training=training,
-                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                    lcc=lcc, codes=speaker_codes); i += 1
     tensor = conv1d(tensor,
                     size=1,
                     rate=1,
                     dropout_rate=hp.dropout_rate,
                     training=training,
-                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                    lcc=lcc, codes=speaker_codes); i += 1
 
     for outer_counter in range(2):
         for j in range(4):
@@ -56,7 +60,8 @@ def TextEnc(hp, L, training=True, speaker_codes=None, reuse=None):
                             dropout_rate=hp.dropout_rate,
                             activation_fn=None,
                             training=training,
-                            scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+                            scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                            lcc=lcc, codes=speaker_codes); i += 1
 
     for _ in range(2):
         tensor = hc(tensor,
@@ -65,7 +70,8 @@ def TextEnc(hp, L, training=True, speaker_codes=None, reuse=None):
                         dropout_rate=hp.dropout_rate,
                         activation_fn=None,
                         training=training,
-                        scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+                        scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                        lcc=lcc, codes=speaker_codes); i += 1
 
 
     if 'text_encoder_towards_end' in hp.multispeaker:
@@ -92,7 +98,8 @@ def TextEnc(hp, L, training=True, speaker_codes=None, reuse=None):
                         dropout_rate=hp.dropout_rate,
                         activation_fn=None,
                         training=training,
-                        scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+                        scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                        lcc=lcc, codes=speaker_codes); i += 1
 
     K, V = tf.split(tensor, 2, -1)
     return K, V
@@ -105,6 +112,8 @@ def AudioEnc(hp, S, training=True, speaker_codes=None, reuse=None):
     Returns
       Q: Queries. (B, T/r, d)
     '''
+    if 'learn_channel_contributions' in hp.multispeaker:
+        lcc = hp.nspeakers
     i = 1
     tensor = conv1d(S,
                     filters=hp.d,
@@ -114,7 +123,8 @@ def AudioEnc(hp, S, training=True, speaker_codes=None, reuse=None):
                     dropout_rate=hp.dropout_rate,
                     activation_fn=tf.nn.relu,
                     training=training,
-                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                    lcc=lcc, codes=speaker_codes); i += 1
 
     if 'audio_encoder_input' in hp.multispeaker:
         speaker_codes_time = tf.tile(speaker_codes, [1,tf.shape(S)[1]])   
@@ -133,14 +143,16 @@ def AudioEnc(hp, S, training=True, speaker_codes=None, reuse=None):
                     dropout_rate=hp.dropout_rate,
                     activation_fn=tf.nn.relu,
                     training=training,
-                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                    lcc=lcc, codes=speaker_codes); i += 1
     tensor = conv1d(tensor,
                     size=1,
                     rate=1,
                     padding="CAUSAL",
                     dropout_rate=hp.dropout_rate,
                     training=training,
-                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                    lcc=lcc, codes=speaker_codes); i += 1
     for _ in range(2):
         for j in range(4):
             tensor = hc(tensor,
@@ -149,7 +161,8 @@ def AudioEnc(hp, S, training=True, speaker_codes=None, reuse=None):
                             padding="CAUSAL",
                             dropout_rate=hp.dropout_rate,
                             training=training,
-                            scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+                            scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                            lcc=lcc, codes=speaker_codes); i += 1
     for _ in range(2):
         tensor = hc(tensor,
                         size=3,
@@ -157,7 +170,8 @@ def AudioEnc(hp, S, training=True, speaker_codes=None, reuse=None):
                         padding="CAUSAL",
                         dropout_rate=hp.dropout_rate,
                         training=training,
-                        scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+                        scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                        lcc=lcc, codes=speaker_codes); i += 1
 
     return tensor
 
@@ -237,7 +251,8 @@ def AudioDec(hp, R, training=True, speaker_codes=None, reuse=None):
     Returns:
       Y: Melspectrogram predictions. (B, T/r, n_mels)
     '''
-
+    if 'learn_channel_contributions' in hp.multispeaker:
+        lcc = hp.nspeakers
     i = 1
     tensor = conv1d(R,
                     filters=hp.d,
@@ -265,7 +280,8 @@ def AudioDec(hp, R, training=True, speaker_codes=None, reuse=None):
                         padding="CAUSAL",
                         dropout_rate=hp.dropout_rate,
                         training=training,
-                        scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+                        scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse, \
+                        lcc=lcc, codes=speaker_codes); i += 1
 
     for _ in range(2):
         tensor = hc(tensor,
@@ -274,7 +290,8 @@ def AudioDec(hp, R, training=True, speaker_codes=None, reuse=None):
                         padding="CAUSAL",
                         dropout_rate=hp.dropout_rate,
                         training=training,
-                        scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+                        scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                        lcc=lcc, codes=speaker_codes); i += 1
     for _ in range(3):
         tensor = conv1d(tensor,
                         size=1,
@@ -283,7 +300,8 @@ def AudioDec(hp, R, training=True, speaker_codes=None, reuse=None):
                         dropout_rate=hp.dropout_rate,
                         activation_fn=tf.nn.relu,
                         training=training,
-                        scope="C_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+                        scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                        lcc=lcc, codes=speaker_codes); i += 1
     # mel_hats
     logits = conv1d(tensor,
                     filters=hp.n_mels,
@@ -292,7 +310,8 @@ def AudioDec(hp, R, training=True, speaker_codes=None, reuse=None):
                     padding="CAUSAL",
                     dropout_rate=hp.dropout_rate,
                     training=training,
-                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                    lcc=lcc, codes=speaker_codes); i += 1
     Y = tf.nn.sigmoid(logits) # mel_hats
 
     return logits, Y
