@@ -18,11 +18,13 @@ from tensorflow.python import debug as tf_debug
 
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
 from data_load import load_data
-from synthesize import synth_text2mel, synth_mel2mag, split_batch, make_mel_batch, synth_codedtext2mel, get_text_lengths, encode_text
+from synthesize import synth_text2mel, synth_mel2mag, split_batch, make_mel_batch, synth_codedtext2mel, get_text_lengths, encode_text, list2batch
 from objective_measures import compute_dtw_error, compute_simple_LSD
 from libutil import basename, safe_makedir
 from configuration import load_config
 from utils import plot_alignment
+
+from utils import durations_to_position, end_pad_for_reduction_shape_sync
 
 import logger_setup
 from logging import info
@@ -31,9 +33,10 @@ from tqdm import tqdm
 
 
 
-def compute_validation(hp, model_type, epoch, inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_set_reference):
-    if model_type == 't2m':
-        validation_set_predictions_tensor, lengths = synth_text2mel(hp, inputs, synth_graph, sess, speaker_data=speaker_codes)
+def compute_validation(hp, model_type, epoch, inputs, synth_graph, sess, speaker_codes, \
+         valid_filenames, validation_set_reference, duration_data=None, validation_labels=None, position_in_phone_data=None):
+    if model_type == 't2m': ## TODO: coded_text2mel here
+        validation_set_predictions_tensor, lengths = synth_text2mel(hp, inputs, synth_graph, sess, speaker_data=speaker_codes, duration_data=duration_data, labels=validation_labels, position_in_phone_data=position_in_phone_data)
         validation_set_predictions = split_batch(validation_set_predictions_tensor, lengths)  
         score = compute_dtw_error(validation_set_reference, validation_set_predictions)   
     elif model_type == 'ssrn':
@@ -77,15 +80,21 @@ def main_work():
     info('Command line: %s'%(" ".join(sys.argv)))
 
 
+
+
+
+    ### TODO: move this to its own function somewhere. Can be used also at synthesis time?
     ### Prepare reference data for validation set:  ### TODO: alternative to holding in memory?
     dataset = load_data(hp, mode="validation") 
     valid_filenames, validation_text = dataset['fpaths'], dataset['texts']
+
+    speaker_codes = validation_duration_data = position_in_phone_data = None ## defaults
     if hp.multispeaker:
         speaker_codes = dataset['speakers']
-    else:
-        speaker_codes = None  ## default
-
-
+    if hp.use_external_durations:
+        validation_duration_data = dataset['durations']
+   
+        
     ## take random subset of validation set to avoid 'This is a librivox recording' type sentences
     random.seed(1234)
     v_indices = range(len(valid_filenames))
@@ -95,11 +104,36 @@ def main_work():
 
     if hp.multispeaker: ## now come back to this after v computed
         speaker_codes = np.array(speaker_codes)[v_indices].reshape(-1, 1)
+    if hp.use_external_durations:
+        validation_duration_data = validation_duration_data[v_indices, :, :]       
+    
 
     valid_filenames = np.array(valid_filenames)[v_indices]
     validation_mags = [np.load(hp.full_audio_dir + os.path.sep + basename(fpath)+'.npy') \
                                 for fpath in valid_filenames]                                
     validation_text = validation_text[v_indices, :]
+    validation_labels = None # default
+    if hp.merlin_label_dir:
+        validation_labels = [np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")) \
+                              for fpath in valid_filenames ]
+        validation_labels = list2batch(validation_labels, hp.max_N)
+
+    if 'position_in_phone' in hp.history_type:  
+
+        def duration2position(duration, fractional=False):     
+            ### very roundabout -- need to deflate A matrix back to integers:
+            duration = duration.sum(axis=0)
+            #print(duration)
+            # sys.exit('evs')   
+            positions = durations_to_position(duration, fractional=fractional)
+            ###positions = end_pad_for_reduction_shape_sync(positions, hp)
+            positions = positions[0::hp.r, :]         
+            #print(positions)
+            return positions
+
+        position_in_phone_data = [duration2position(dur, fractional=('fractional' in hp.history_type)) \
+                        for dur in dataset['durations'][v_indices]]       
+        position_in_phone_data = list2batch(position_in_phone_data, hp.max_T)
 
     if model_type=='t2m':
         validation_mels = [np.load(hp.coarse_audio_dir + os.path.sep + basename(fpath)+'.npy') \
@@ -114,6 +148,10 @@ def main_work():
         info('Undefined model_type {} for making validation inputs -- supply dummy None values'.format(model_type))
         validation_inputs = None
         validation_reference = None
+
+
+
+
 
     ## Get the text and mel inputs for the utts you would like to plot attention graphs for 
     if hp.plot_attention_every_n_epochs and model_type=='t2m': #check if we want to plot attention
@@ -209,7 +247,7 @@ def main_work():
         if hp.plot_attention_every_n_epochs and model_type == 't2m' and epoch == 0: # ssrn model doesn't generate alignments 
             get_and_plot_alignments(hp, epoch - 1, attention_graph, sess, attention_inputs, attention_mels, logdir + "/alignments") # epoch-1 refers to freshly initialised model
  
-        current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference)
+        current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference, duration_data=validation_duration_data, validation_labels=validation_labels, position_in_phone_data=position_in_phone_data)
         info('validation epoch {0}: {1:0.3f}'.format(epoch, current_score))
 
         while 1:  
@@ -229,7 +267,7 @@ def main_work():
                     train_loss_mean_std = ' '.join(['{:0.3f}'.format(score) for score in train_loss_mean_std])
                     info('train epoch {0}: {1}'.format(epoch, train_loss_mean_std))
 
-                    current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference)
+                    current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference, duration_data=validation_duration_data, validation_labels=validation_labels, position_in_phone_data=position_in_phone_data)
                     info('validation epoch {0:0}: {1:0.3f}'.format(epoch, current_score))
 
             ### End of epoch: plot attention matrices? #################################

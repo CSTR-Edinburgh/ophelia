@@ -5,7 +5,7 @@ Based on code by kyubyong park at https://www.github.com/kyubyong/dc_tts
 '''
 
 from data_load import get_batch, load_vocab
-from networks import TextEnc, AudioEnc, AudioDec, Attention, SSRN
+from networks import TextEnc, AudioEnc, AudioDec, Attention, SSRN, FixedAttention
 import tensorflow as tf
 from utils import get_global_attention_guide, learning_rate_decay
 
@@ -54,14 +54,27 @@ class Graph(object):
                 self.gts = batchdict['attention_guide']
             else:
                 self.gts = tf.convert_to_tensor(get_global_attention_guide(hp))
+            if hp.use_external_durations:
+                self.durations = batchdict['duration']
+            if hp.merlin_label_dir:
+                self.merlin_label = batchdict['merlin_label']
+            if 'position_in_phone' in hp.history_type:
+                self.position_in_phone = batchdict['position_in_phone']
             batchsize = self.get_batchsize()
             self.prev_max_attentions = tf.ones(shape=(batchsize,), dtype=tf.int32)
             
+        ## TODO refactor to remove redundancy between the next 2 branches?
         elif self.mode is 'synthesize':  # synthesis
             self.L = tf.placeholder(tf.int32, shape=(None, None))
             self.speakers = None
             if hp.multispeaker:
                 self.speakers = tf.placeholder(tf.int32, shape=(None, None))
+            if hp.use_external_durations:
+                self.durations = tf.placeholder(tf.float32, shape=(None, None, None))   
+            if hp.merlin_label_dir:
+                self.merlin_label = tf.placeholder(tf.float32, shape=(None, None, hp.merlin_lab_dim))
+            if 'position_in_phone' in hp.history_type:
+                self.position_in_phone = tf.placeholder(tf.float32, shape=(None, None, 1))                                     
             self.mels = tf.placeholder(tf.float32, shape=(None, None, hp.n_mels))
             self.prev_max_attentions = tf.placeholder(tf.int32, shape=(None,))
         elif self.mode is 'generate_attention':
@@ -69,6 +82,12 @@ class Graph(object):
             self.speakers = None
             if hp.multispeaker:
                 self.speakers = tf.placeholder(tf.int32, shape=(None, None))
+            if hp.use_external_durations:
+                self.durations = tf.placeholder(tf.float32, shape=(None, None, None))  
+            if hp.merlin_label_dir:
+                self.merlin_label = tf.placeholder(tf.float32, shape=(None, None, hp.merlin_lab_dim))
+            if 'position_in_phone' in hp.history_type:
+                self.position_in_phone = tf.placeholder(tf.float32, shape=(None, None, 1))                                                
             self.mels = tf.placeholder(tf.float32, shape=(None, None, hp.n_mels))
             
 
@@ -76,7 +95,7 @@ class Graph(object):
         '''
         hp.update_weights: list of strings of regular expressions used to match
         scope prefixes of variables with tf.get_collection. Only these will be updated
-        by the graph's train_op: others will be frozen in training.
+        by the graph's train_op: others will be frozen in training. TODO: this comment is now out of place...
         '''
 
         hp = self.hp
@@ -151,17 +170,33 @@ class Text2MelGraph(Graph):
             self.S = tf.concat((tf.zeros_like(self.mels[:, :1, :]), self.mels[:, :-1, :]), 1)
 
             # Networks
-            with tf.variable_scope("TextEnc"):
-                self.K, self.V = TextEnc(self.hp, self.L, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)  # (N, Tx, e)
+            if self.hp.text_encoder_type=='none': 
+                assert self.hp.merlin_label_dir
+                self.K = self.V = self.merlin_label
+            elif self.hp.text_encoder_type=='minimal_feedforward':
+                assert self.hp.merlin_label_dir
+                sys.exit('Not implemented: hp.text_encoder_type=="minimal_feedforward"')
+            else: ## default DCTTS text encoder
+                with tf.variable_scope("TextEnc"):
+                    self.K, self.V = TextEnc(self.hp, self.L, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)  # (N, Tx, e)
 
             with tf.variable_scope("AudioEnc"):
-                self.Q = AudioEnc(self.hp, self.S, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)
+                if self.hp.history_type in ['fractional_position_in_phone', 'absolute_position_in_phone']:
+                    self.Q = self.position_in_phone
+                elif self.hp.history_type == 'minimal_history':
+                    sys.exit('Not implemented: hp.history_type=="minimal_history"')
+                else:                
+                    assert self.hp.history_type == 'DCTTS_standard'
+                    self.Q = AudioEnc(self.hp, self.S, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)
 
             with tf.variable_scope("Attention"):
                 # R: (B, T/r, 2d)
                 # alignments: (B, N, T/r)
                 # max_attentions: (B,)
-                if self.mode is 'synthesize':
+                if self.hp.use_external_durations:
+                    self.R, self.alignments, self.max_attentions = FixedAttention(self.hp, self.durations, self.Q, self.V)
+
+                elif self.mode is 'synthesize':
                     self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
                                                                             monotonic_attention=True,
                                                                             prev_max_attentions=self.prev_max_attentions)

@@ -1,4 +1,4 @@
-    # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 #/usr/bin/python2
 '''
 By kyubyong park. kbpark.linguist@gmail.com. 
@@ -186,10 +186,47 @@ def Attention(hp, Q, K, V, monotonic_attention=False, prev_max_attentions=None):
     A = tf.nn.softmax(A) # (B, T/r, N)
     max_attentions = tf.argmax(A, -1)  # (B, T/r)
     R = tf.matmul(A, V)
-    R = tf.concat((R, Q), -1)
+    if hp.concatenate_query:
+        print ('Concatenate R & Q -> R prime')
+        R = tf.concat((R, Q), -1)
+    else:
+        print ('Do ***not*** concatenate R & Q -> R prime')
 
     alignments = tf.transpose(A, [0, 2, 1]) # (B, N, T/r)
 
+    return R, alignments, max_attentions
+
+def FixedAttention(hp, duration_matrix, Q, V):
+    '''
+    Implement upsampling according to external duration model via an attention-like
+    mechanism. Instead of computing A dynamically based on the comparison of Q and K,
+    we use duration_matrix, an externally-supplied matrix. If binary and designed 
+    appropriately, taking the product of this and V will perform selection and 
+    upsampling of text-derived features in V. 
+
+    Note that training and synthesis time operation is identical: i.e. the synthesis
+    transcript is expected to have an externally-supplied duration field.
+
+    Note that if K is computed elsewhere in the network, it is never used and will
+    not be trained.
+
+    Q is only passed in to optionally concatenate with upsampled text representations
+    (if hp.concatenate_query==True) for compatibility with standard attention function 
+    above.
+
+    Return alignments -- used for attention loss even though this will never inform learning
+    when using FixedAttention.
+
+    max_attentions computed and returned, even though trivial in this case.
+    '''
+    max_attentions = tf.argmax(duration_matrix, -1)  # (B, T/r)
+    R = tf.matmul(duration_matrix, V)
+    if hp.concatenate_query:
+        print ('Concatenate R & Q -> R prime')
+        R = tf.concat((R, Q), -1)
+    else:
+        print ('Do ***not*** concatenate R & Q -> R prime')
+    alignments = tf.transpose(duration_matrix, [0, 2, 1]) # (B, N, T/r)
     return R, alignments, max_attentions
 
 def AudioDec(hp, R, training=True, speaker_codes=None, reuse=None):

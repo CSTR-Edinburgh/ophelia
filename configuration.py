@@ -10,8 +10,16 @@ CONFIG_DEFAULTS = [
     ('update_weights', [], ''),
     ('num_threads', 8, 'how many threads get_batch should use to build training batches of data (default: 8)'),
     ('plot_attention_every_n_epochs', 0, 'set to 0 if you do not wish to plot attention matrices'),
-    ('num_sentences_to_plot_attention', 0, 'number of sentences to plot attention matrices for')
+    ('num_sentences_to_plot_attention', 0, 'number of sentences to plot attention matrices for'),
+    ('concatenate_query', True, 'Concatenate [R Q] to get audio decoder input, or just take R?'),
+    ('use_external_durations', False, 'Use externally supplied durations in 6th field of transcript for fixed attention matrix A'),
+    ('text_encoder_type', 'DCTTS_standard', 'one of DCTTS_standard/none/minimal_feedforward'),
+    ('merlin_label_dir', '', 'npy format phone labels converted from merlin using process_merlin_label.py'),
+    ('merlin_lab_dim', 592, ''),
+    ('bucket_data_by', 'text_length', 'One of audio_length/text_length. Label length will be used if merlin_label_dir is set and bucket_data_by=="text_length"'),
+    ('history_type', 'DCTTS_standard', 'DCTTS_standard/fractional_position_in_phone/absolute_position_in_phone/minimal_history')
 ]
+
 
 ## Intended to have hp as a module, but this doesn't allow pickling and therefore 
 ## use in parallel processing. So, convert module into an object of arbitrary type 

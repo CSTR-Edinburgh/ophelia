@@ -19,7 +19,7 @@ import tensorflow as tf
 from tqdm import tqdm
 
 from utils import plot_alignment
-from utils import spectrogram2wav
+from utils import spectrogram2wav, durations_to_position
 from utils import split_streams, magphase_synth_from_compressed 
 from data_load import load_data
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
@@ -53,7 +53,8 @@ def denorm(data, stats, type):
     return data
 
 ## TODO: compare efficiency  etc with encode_text + synth_codedtext2mel and possibly remove this version
-def synth_text2mel(hp, L, g, sess, speaker_data=None):
+def synth_text2mel(hp, L, g, sess, speaker_data=None, duration_data=None, \
+                        labels=None, position_in_phone_data=None):
     '''
     L: texts
     g: synthesis graph
@@ -73,20 +74,36 @@ def synth_text2mel(hp, L, g, sess, speaker_data=None):
                                                         ## NB: initialised to max_T -- will default to this.
 
     t = start_clock('gen')
+    feeddict = {g.L: L, g.mels: Y, g.prev_max_attentions: prev_max_attentions}
+    if hp.multispeaker:
+        feeddict[g.speakers] = speaker_data   
+    if hp.use_external_durations:
+        feeddict[g.durations] = duration_data  
+    if hp.merlin_label_dir:
+        feeddict[g.merlin_label] = labels  
+    if 'position_in_phone' in hp.history_type:
+        feeddict[g.position_in_phone] = position_in_phone_data
+
+
     for j in tqdm(range(hp.max_T)): # always run for max num of mel-frames
-        if hp.multispeaker:
-            _Y, _max_attentions, _alignments, = \
-                sess.run([ g.Y, g.max_attentions, g.alignments],
-                         {g.L: L,
-                          g.mels: Y,
-                          g.speakers: speaker_data,
-                          g.prev_max_attentions: prev_max_attentions}) ##
-        else:
-            _Y, _max_attentions, _alignments, = \
-                sess.run([ g.Y, g.max_attentions, g.alignments],
-                         {g.L: L,
-                          g.mels: Y,
-                          g.prev_max_attentions: prev_max_attentions}) ## osw: removed global_step from synth loop
+        _Y, _max_attentions, _alignments, = \
+                    sess.run([ g.Y, g.max_attentions, g.alignments], feeddict)                                    
+
+        #### OLDER VERSION (TODO - prune):
+        # if hp.multispeaker:
+        #     _Y, _max_attentions, _alignments, = \
+        #         sess.run([ g.Y, g.max_attentions, g.alignments],
+        #                  {g.L: L,
+        #                   g.mels: Y,
+        #                   g.speakers: speaker_data,
+        #                   g.prev_max_attentions: prev_max_attentions}) ##
+        # else:
+        #     _Y, _max_attentions, _alignments, = \
+        #         sess.run([ g.Y, g.max_attentions, g.alignments],
+        #                  {g.L: L,
+        #                   g.mels: Y,
+        #                   g.prev_max_attentions: prev_max_attentions}) ## osw: removed global_step from synth loop
+
         Y[:, j, :] = _Y[:, j, :]
         prev_max_attentions = _max_attentions[:, j]
 
@@ -121,7 +138,8 @@ def synth_babble(hp, g, sess, seed=False, nsamples=16):
         Y[:, j, :] = _Y[:, j, :]
     return Y
 
-def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None):
+def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None, duration_data=None, \
+                labels=None, position_in_phone_data=None):
     '''
     K, V: coded texts
     g: synthesis graph
@@ -139,22 +157,38 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None):
                                                         ## NB: initialised to max_T -- will default to this.
 
     t = start_clock('gen')
+    feeddict = {g.K: K, g.V: V, g.mels: Y, g.prev_max_attentions: prev_max_attentions}
+    if hp.multispeaker:
+        feeddict[g.speakers] = speaker_data  
+    if hp.use_external_durations:
+        feeddict[g.durations] = duration_data    
+    if hp.merlin_label_dir:
+        feeddict[g.merlin_label] = labels      
+    if 'position_in_phone' in hp.history_type:
+        feeddict[g.position_in_phone] = position_in_phone_data             
     for j in tqdm(range(hp.max_T)):  # always run for max num of mel-frames
-        if hp.multispeaker:
-            _Y, _max_attentions, _alignments, = \
-                sess.run([ g.Y, g.max_attentions, g.alignments],
-                         {g.K: K,
-                          g.V: V,
-                          g.mels: Y,
-                          g.speakers: speaker_data,
-                          g.prev_max_attentions: prev_max_attentions}) ##
-        else:
-            _Y, _max_attentions, _alignments, = \
-                sess.run([ g.Y, g.max_attentions, g.alignments],
-                         {g.K: K,
-                          g.V: V,
-                          g.mels: Y,
-                          g.prev_max_attentions: prev_max_attentions}) ## osw: removed global_step from synth loop
+        _Y, _max_attentions, _alignments, = \
+                    sess.run([ g.Y, g.max_attentions, g.alignments], feeddict)                                    
+
+        #### OLDER VERSION (TODO - prune):--
+        # if hp.multispeaker:
+        #     _Y, _max_attentions, _alignments, = \
+        #         sess.run([ g.Y, g.max_attentions, g.alignments],
+        #                  {g.K: K,
+        #                   g.V: V,
+        #                   g.mels: Y,
+        #                   g.speakers: speaker_data,
+        #                   g.prev_max_attentions: prev_max_attentions}) ##
+        # else:
+        #     _Y, _max_attentions, _alignments, = \
+        #         sess.run([ g.Y, g.max_attentions, g.alignments],
+        #                  {g.K: K,
+        #                   g.V: V,
+        #                   g.mels: Y,
+        #                   g.prev_max_attentions: prev_max_attentions}) ## osw: removed global_step from synth loop
+
+
+
         Y[:, j, :] = _Y[:, j, :] # build up mel-spec frame-by-frame
         alignments[:, :, j] = _alignments[:, :, j] # build up attention matrix frame-by-frame
         prev_max_attentions = _max_attentions[:, j]
@@ -174,11 +208,14 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None):
 
     return (Y, t_ends.tolist(), alignments)
 
-def encode_text(hp, L, g, sess, speaker_data=None):  
+def encode_text(hp, L, g, sess, speaker_data=None, labels=None):  
+
+    feeddict = {g.L: L}
     if hp.multispeaker:
-        K, V = sess.run([ g.K, g.V], {g.L: L, g.speakers: speaker_data})
-    else: 
-        K, V = sess.run([ g.K, g.V], {g.L: L}) 
+        feeddict[g.speakers] = speaker_data   
+    if hp.merlin_label_dir:
+        feeddict[g.merlin_label] = labels  
+    K, V = sess.run([ g.K, g.V], feeddict)
     return (K, V)
 
 def get_text_lengths(L):
@@ -209,7 +246,7 @@ def split_batch(synth_batch, end_indices):
         outputs.append(predmel[:length, :])
     return outputs
 
-def make_mel_batch(hp, fnames, oracle=True):
+def make_mel_batch(hp, fnames, oracle=True): ## TODO: refactor with list2batch ?
     lengths = []
     if oracle:
         source = hp.coarse_audio_dir
@@ -225,6 +262,18 @@ def make_mel_batch(hp, fnames, oracle=True):
         lengths.append(length * hp.r)
     return mel_batch, lengths
 
+def list2batch(inlist, pad_length):
+    lengths = []
+    m,dim = inlist[0].shape
+    
+    batch = np.zeros((len(inlist), pad_length, dim), np.float32)
+    for (i,array) in enumerate(inlist):
+        length,n = array.shape
+        assert length <= pad_length
+        assert n==dim
+        batch[i,:length,:] = array
+    return batch
+
 
 def restore_latest_model_parameters(sess, hp, model_type):
     model_types = {  't2m': 'Text2Mel', 
@@ -236,6 +285,7 @@ def restore_latest_model_parameters(sess, hp, model_type):
     saver = tf.train.Saver(var_list=var_list)
     savepath = hp.logdir + "-" + model_type
     latest_checkpoint = tf.train.latest_checkpoint(savepath)
+    if latest_checkpoint is None: sys.exit('No %s at %s?'%(model_type, savepath))
     latest_epoch = latest_checkpoint.strip('/ ').split('/')[-1].replace('model_epoch_', '')
     saver.restore(sess, latest_checkpoint)
     print("Model of type %s restored from latest epoch %s"%(model_type, latest_epoch))
@@ -282,13 +332,44 @@ def synthesize(hp, speaker_id='', num_sentences=0):
 
     dataset = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
     fpaths, L = dataset['fpaths'], dataset['texts']
+    position_in_phone_data = duration_data = labels = None # default
+    if hp.use_external_durations:
+        duration_data = dataset['durations']
+        if num_sentences > 0:
+            duration_data = duration_data[:num_sentences, :, :]
 
-    bases = [basename(fpath) for fpath in fpaths]
+    if 'position_in_phone' in hp.history_type:
+        ## TODO: combine + deduplicate with relevant code in train.py for making validation set
+        def duration2position(duration, fractional=False):     
+            ### very roundabout -- need to deflate A matrix back to integers:
+            duration = duration.sum(axis=0)
+            #print(duration)
+            # sys.exit('evs')   
+            positions = durations_to_position(duration, fractional=fractional)
+            ###positions = end_pad_for_reduction_shape_sync(positions, hp)
+            positions = positions[0::hp.r, :]         
+            #print(positions)
+            return positions
+
+        position_in_phone_data = [duration2position(dur, fractional=('fractional' in hp.history_type)) \
+                        for dur in duration_data]       
+        position_in_phone_data = list2batch(position_in_phone_data, hp.max_T)
+
+
 
     # Ensure we aren't trying to generate more utterances than are actually in our test_transcript
     if num_sentences > 0:
-        assert num_sentences < len(bases)
+        assert num_sentences < len(fpaths)
         L = L[:num_sentences, :]
+        fpaths = fpaths[:num_sentences]
+
+    bases = [basename(fpath) for fpath in fpaths]
+
+    if hp.merlin_label_dir:
+        labels = [np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")) \
+                              for fpath in fpaths ]
+        labels = list2batch(labels, hp.max_N)
+
 
     if speaker_id:
         speaker2ix = dict(zip(hp.speaker_list, range(len(hp.speaker_list))))
@@ -318,10 +399,16 @@ def synthesize(hp, speaker_id='', num_sentences=0):
         ### TODO: after futher efficiency testing, remove this fork
         if 1:  ### efficient route -- only make K&V once  ## 3.86, 3.70, 3.80 seconds (2 sentences)
             text_lengths = get_text_lengths(L)
-            K, V = encode_text(hp, L, g1, sess, speaker_data=speaker_data)
-            Y, lengths, alignments = synth_codedtext2mel(hp, K, V, text_lengths, g1, sess, speaker_data=speaker_data)
+            K, V = encode_text(hp, L, g1, sess, speaker_data=speaker_data, labels=labels)
+            Y, lengths, alignments = synth_codedtext2mel(hp, K, V, text_lengths, g1, sess, \
+                                speaker_data=speaker_data, duration_data=duration_data, \
+                                position_in_phone_data=position_in_phone_data,\
+                                labels=labels)
         else: ## 5.68, 5.43, 5.38 seconds (2 sentences)
-            Y, lengths = synth_text2mel(hp, L, g1, sess, speaker_data=speaker_data)
+            Y, lengths = synth_text2mel(hp, L, g1, sess, speaker_data=speaker_data, \
+                                            duration_data=duration_data, \
+                                            position_in_phone_data=position_in_phone_data, \
+                                            labels=labels)
         stop_clock(t)
 
         ### TODO: useful to test this?

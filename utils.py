@@ -168,7 +168,7 @@ def load_spectrograms(hp, fpath):
     mel, mag = get_spectrograms(hp, fpath)
     t = mel.shape[0]
 
-    # Marginal padding for reduction shape sync.
+    # Marginal padding for reduction shape sync.  TODO: could refactor with end_pad_for_reduction_shape_sync function?
     num_paddings = hp.r - (t % hp.r) if t % hp.r != 0 else 0
     mel = np.pad(mel, [[0, num_paddings], [0, 0]], mode="constant")
     mag = np.pad(mag, [[0, num_paddings], [0, 0]], mode="constant")
@@ -176,8 +176,59 @@ def load_spectrograms(hp, fpath):
     # Reduction
     mel_reduced = mel[::hp.r, :]
     return fname, mel_reduced, mag, mel
+
+
+def end_pad_for_reduction_shape_sync(data, hp):
+    nframe = data.shape[0]
+    num_paddings = hp.r - (nframe % hp.r) if nframe % hp.r != 0 else 0
+    data = np.pad(data, [[0, num_paddings], [0, 0]], mode="constant")
+    return data
+
+
+def durations_to_hard_attention_matrix(durations):   
+    '''
+    Take array of durations, return selection matrix to replace A in attention mechanism.
+    E.g.:
+
+    durations_to_hard_attention_matrix(np.array([3,0,1,2]))
+
+    [[1. 1. 1. 0. 0. 0.]
+     [0. 0. 0. 0. 0. 0.]
+     [0. 0. 0. 1. 0. 0.]
+     [0. 0. 0. 0. 1. 1.]]  
+    '''
+    nphones = len(durations)
+    nframes = durations.sum()
+    A = np.zeros((nframes, nphones), dtype=np.float32)
+    start = 0
+    for (i,dur) in enumerate(durations):
+        end = start + dur
+        A[start:end,i] = 1.0
+        start = end
+    assert A.sum(axis=1).all() == 1.0 
+    assert A.sum(axis=0).all() == durations.all()
+    return A
+
+
+def durations_to_position(durations, fractional=False):
     
-    
+    nframes = durations.sum()
+    positions = np.zeros((nframes,), dtype=np.float32)
+    start = 0
+    #print (durations)
+    #sys.exit('qevfewrb')
+    for dur in durations:
+        #print (positions)
+        end = start + dur
+        if fractional:
+            #print (dur)
+            positions[start:end] = np.arange(dur) / dur
+        else:
+            positions[start:end] = np.arange(dur)
+        start = end
+    return positions.reshape(-1,1)
+
+
 
 def split_streams(combined, streamlist, streamdims):
     separate_streams = {}
@@ -255,7 +306,13 @@ def softmax(X, theta = 1.0, axis = None):
 
 
 if __name__ == '__main__':
-    import pylab
-    a = guided_attention(g=0.2)    
-    pylab.imshow(a)
-    pylab.show()
+    if 0:
+        import pylab
+        a = guided_attention(g=0.2)    
+        pylab.imshow(a)
+        pylab.show()
+    if 1:
+        a = durations_to_hard_attention_matrix(np.array([3,0,1,2]))
+        print( a)
+        print (durations_to_fractional_position(np.array([3,0,1,2])))
+        print (durations_to_absolute_position(np.array([3,0,1,2])))

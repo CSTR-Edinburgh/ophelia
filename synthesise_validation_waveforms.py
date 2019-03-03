@@ -56,10 +56,12 @@ def main_work():
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         
+        ## TODO: use restore_latest_model_parameters from synthesize?
         var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'SSRN') 
         saver2 = tf.train.Saver(var_list=var_list)
         savepath = hp.logdir + "-ssrn"        
         latest_checkpoint = tf.train.latest_checkpoint(savepath)
+        if latest_checkpoint is None: sys.exit('No SSRN at %s?'%(savepath))
         ssrn_epoch = latest_checkpoint.strip('/ ').split('/')[-1].replace('model_epoch_', '')
         saver2.restore(sess, latest_checkpoint)
         print("SSRN Restored from latest epoch %s"%(ssrn_epoch))
