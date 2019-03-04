@@ -21,6 +21,7 @@ def TextEnc(hp, L, training=True, speaker_codes=None, reuse=None):
         K: Keys. (B, N, d)
         V: Values. (B, N, d)
     '''
+    lcc = 0 # default
     if 'learn_channel_contributions' in hp.multispeaker:
         lcc = hp.nspeakers
     i = 1
@@ -112,6 +113,7 @@ def AudioEnc(hp, S, training=True, speaker_codes=None, reuse=None):
     Returns
       Q: Queries. (B, T/r, d)
     '''
+    lcc = 0 # default
     if 'learn_channel_contributions' in hp.multispeaker:
         lcc = hp.nspeakers
     i = 1
@@ -251,6 +253,7 @@ def AudioDec(hp, R, training=True, speaker_codes=None, reuse=None):
     Returns:
       Y: Melspectrogram predictions. (B, T/r, n_mels)
     '''
+    lcc = 0 # default
     if 'learn_channel_contributions' in hp.multispeaker:
         lcc = hp.nspeakers
     i = 1
