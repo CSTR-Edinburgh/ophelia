@@ -107,6 +107,9 @@ def synth_text2mel(hp, L, g, sess, speaker_data=None, duration_data=None, \
         Y[:, j, :] = _Y[:, j, :]
         prev_max_attentions = _max_attentions[:, j]
 
+        feeddict[g.mels] = Y
+        feeddict[g.prev_max_attentions] = prev_max_attentions
+
         ## Work out if we've reach end of any/all sentences in batch:-
         reached_end = (_max_attentions[:, j] >= ends) ## is attention focussing on or beyond end of textual sentence?
         endcounts += reached_end
@@ -192,6 +195,9 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None, duration_dat
         Y[:, j, :] = _Y[:, j, :] # build up mel-spec frame-by-frame
         alignments[:, :, j] = _alignments[:, :, j] # build up attention matrix frame-by-frame
         prev_max_attentions = _max_attentions[:, j]
+
+        feeddict[g.mels] = Y
+        feeddict[g.prev_max_attentions] = prev_max_attentions
 
         ## Work out if we've reach end of any/all sentences in batch:-
         reached_end = (_max_attentions[:, j] >= ends) ## is attention focussing on or beyond end of textual sentence?
