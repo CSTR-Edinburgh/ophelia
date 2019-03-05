@@ -12,7 +12,8 @@ import timeit
 from argparse import ArgumentParser
 
 import numpy as np
-from scipy.io.wavfile import write
+#from scipy.io.wavfile import write
+import soundfile
 
 import tensorflow as tf
 
@@ -159,6 +160,7 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None, duration_dat
     t_ends = np.ones(ends.shape, dtype=int) * hp.max_T  ## The frame index when endcounts is sufficiently high, which we'll consider the end of the utterance
                                                         ## NB: initialised to max_T -- will default to this.
 
+
     t = start_clock('gen')
     feeddict = {g.K: K, g.V: V, g.mels: Y, g.prev_max_attentions: prev_max_attentions}
     if hp.multispeaker:
@@ -232,7 +234,7 @@ def get_text_lengths(L):
     return ends
 
 
-def synth_mel2mag(hp, Y, g, sess, batchsize=0):
+def synth_mel2mag(hp, Y, g, sess, batchsize=128):
     #assert speaker_data==None  ## TODO: remove, or might speaker-condition SSRN at some point?
     
     if batchsize > 0:
@@ -272,6 +274,9 @@ def list2batch(inlist, pad_length):
     lengths = []
     m,dim = inlist[0].shape
     
+    if pad_length==0:
+        pad_length = max([a.shape[0] for a in inlist])
+
     batch = np.zeros((len(inlist), pad_length, dim), np.float32)
     for (i,array) in enumerate(inlist):
         length,n = array.shape
@@ -448,8 +453,9 @@ def synthesize(hp, speaker_id='', num_sentences=0):
                 wav = spectrogram2wav(hp, mag)
             else:
                 sys.exit('Unsupported vocoder type: %s'%(hp.vocoder))
-            write(outdir + "/{}.wav".format(bases[i]), hp.sr, wav)
-
+            #write(outdir + "/{}.wav".format(bases[i]), hp.sr, wav)
+            soundfile.write(outdir + "/{}.wav".format(bases[i]), wav, hp.sr)
+            
         # Plot attention alignments 
         for i in range(num_sentences):
             plot_alignment(hp, alignments[i], utt_idx=i+1, t2m_epoch=t2m_epoch, dir=outdir)
