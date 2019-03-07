@@ -27,6 +27,18 @@ def phones_from_str(phones_str):
     phones = [p for p in phones if p is not '']
     return phones
 
+def save_corrupted(data, transcript_path, out_dir, filename):
+    '''take the data, and save to disk'''
+    transcript_file_name = os.path.basename(transcript_path)
+    out_file = os.path.join(out_dir, filename + '_' + transcript_file_name)
+    lines = []
+    for the_rest, corrupted in data:
+        lines.append(the_rest + corrupted) #join the strings together
+    lines = ''.join(lines)
+    with open(out_file, 'w') as f:
+        f.write(lines)
+    print('Successfully saved corrupted transcript to {}. Add it to dctts config file.'.format(out_file))
+
 '''
 Corruption methods ###############################################################################
 '''
@@ -67,18 +79,6 @@ def delete_phones(data, num_to_remove, corruption_percentage):
 '''
 Corruption methods ###############################################################################
 '''
-
-def save_corrupted(data, transcript_path, out_dir, filename):
-    '''take the data, and save to disk'''
-    transcript_file_name = os.path.basename(transcript_path)
-    out_file = os.path.join(out_dir, filename + '_' + transcript_file_name)
-    lines = []
-    for the_rest, corrupted in data:
-        lines.append(the_rest + corrupted) #join the strings together
-    lines = ''.join(lines)
-    with open(out_file, 'w') as f:
-        f.write(lines)
-    print('Successfully saved corrupted transcript to {}. Add it to dctts config file.'.format(out_file))
 
 def main():
     #create parser
