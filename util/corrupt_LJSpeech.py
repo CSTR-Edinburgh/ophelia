@@ -31,9 +31,10 @@ def phones_from_str(phones_str):
 Corruption methods ###############################################################################
 '''
     
-def swap_halves(data):
+def swap_halves(data, corruption_percentage):
     '''swap first and latter halves of sentence'''
-    for i, l in enumerate(data):
+    num_to_corrupt = int(corruption_percentage*len(data))
+    for i, l in enumerate(data[:num_to_corrupt]):
         phone_str = l[1]
         phones = phones_from_str(phone_str)
         swapped_phones = phones[len(phones)/2:] + phones[:len(phones)/2] #swap
@@ -91,29 +92,30 @@ def main():
                         help="Directory to save corrupted transcript to.")
     parser.add_argument("--corruption_method", action="store", dest="corruption_method", type=str, required=True,
                         help="Corruption method chosen.")
-    parser.add_argument("--corruption_percentage", action="store", dest="corruption_percentage", type=str, required=True,
+    parser.add_argument("--corruption_percentage", action="store", dest="corruption_percentage", type=float, required=True,
                         help="What percent of the training utts to corrupt: 0.25 means we corrupt 25 percent of the sentences and leave 75 percent untouched.") 
+    parser.add_argument("--corruption_num", action="store", dest="corruption_num", type=float, default=None,
+                        help="Used if the corruption method accepts an extra numerical parameter.") 
 
     #parse arguments
     args = parser.parse_args()
     if args.out_dir is None: #if we are not given an out_dir, save the new modified script to where we loaded LJSpeech
         args.out_dir = os.path.dirname(args.transcript_path)
-    args.corruption_percentage = float(args.corruption_percentage)
 
     #load data from file
     data = load_transcript(args.transcript_path)
 
     #call the appropriate corruption method to corrupt data
     if args.corruption_method == 'swap_halves':
-        swap_halves(data)
-        save_corrupted(data, args.transcript_path, args.out_dir, filename=args.corruption_method)
+        swap_halves(data, args.corruption_percentage)
+        save_corrupted(data, args.transcript_path, args.out_dir, filename=args.corruption_method + '_' + str(args.corruption_percentage))
     elif args.corruption_method == 'swap_phones':
         swap_phones(data)
     elif args.corruption_method == 'swap_words':
         swap_words(data)
     elif args.corruption_method == 'delete_phones':
-        delete_phones(data, 3, args.corruption_percentage)
-        save_corrupted(data, args.transcript_path, args.out_dir, filename=args.corruption_method + '_' + str(args.corruption_percentage))
+        delete_phones(data, args.corruption_num, args.corruption_percentage)
+        save_corrupted(data, args.transcript_path, args.out_dir, filename=args.corruption_method + '_' + str(args.corruption_num) + '_' + str(args.corruption_percentage))
     else:
         raise ValueError("Unsupported --corruption_method, got {}.".format(args.corruption_method))
 
