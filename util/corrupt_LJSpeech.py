@@ -63,6 +63,8 @@ def swap_words(data):
 
 def delete_phones(data, num_to_remove, corruption_percentage):
     '''delete N number of phones from middle of transcript'''
+    if num_to_remove is None:
+        raise ValueError("For delete phones must choose set the corruption_num command line argument")
     num_to_corrupt = int(corruption_percentage*len(data))
     for i, l in enumerate(data[:num_to_corrupt]):
         phone_str = l[1]
