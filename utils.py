@@ -159,17 +159,16 @@ def plot_alignment(hp, alignment, chars, utt_name, t2m_epoch, monotonic, ground_
     plt.xlabel('Decoder timestep')
     # print(alignment.shape[0], alignment.shape[1])
 
-    plot_on_attention_matrix = True
-    if plot_on_attention_matrix: #plot phone label directly on the alignment
+    if hp.plot_inputs_on_attention_matrix: #plot phone label directly on the alignment
         #get position of decoder timestep that has mean attention energy
         means = []
         for row in alignment: #each row is attention energies
             row_weighted_sum = np.sum(np.arange(0, hp.max_T) * row)
-            mean_position = row_weighted_sum / np.sum(row)
-            if np.isnan(mean_position): #caused by divide by 0
-                means.append(0) #padding char
+            if np.sum(row) != 0: #avoid dividing by zero
+                mean_position = row_weighted_sum / np.sum(row)
             else:
-                means.append(mean_position)
+                mean_position = 0
+            means.append(mean_position)
         # print(means)
         texts = []
         for x_pos, y_pos, char in zip(means, np.arange(0, hp.max_N), chars):
@@ -183,8 +182,8 @@ def plot_alignment(hp, alignment, chars, utt_name, t2m_epoch, monotonic, ground_
 
     else: #plot on y-ticks
         plt.yticks(np.arange(0, hp.max_N) , chars, fontsize=4)
-        ax.set_yticks(np.arange(-0.5, hp.max_N), minor=True)
-        ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.5) 
+        # ax.set_yticks(np.arange(-0.5, hp.max_N), minor=True)
+        # ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.5) 
 
     basename = 'alignment_{}_{}_{}_utt{}_epoch{}'.format(hp.config_name, monotonic_str, ground_truth_str, utt_name, t2m_epoch)
     path = dir + '/' + basename + '.pdf'

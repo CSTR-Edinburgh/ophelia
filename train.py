@@ -50,46 +50,29 @@ def compute_validation(hp, model_type, epoch, inputs, synth_graph, sess, speaker
     return score
 
 
-def get_and_plot_alignments(hp, epoch, attention_graph, sess, chars, attention_inputs, attention_mels, alignment_dir):
+def get_and_plot_alignments(hp, epoch, attention_graph, sess, chars, utt_names, attention_inputs, attention_mels, alignment_dir):
     return_values = sess.run([attention_graph.alignments], # use attention_graph to obtain attention maps for a few given inputs and mels
                              {attention_graph.L: attention_inputs, 
                               attention_graph.mels: attention_mels}) 
-    alignments = return_values[0] # sess run returns a list, so unpack this list
+    alignments = return_values[0] # sess.run() returns a list, so unpack this list
     for i in range(len(attention_inputs)):
-        plot_alignment(hp, alignments[i], chars=chars[i], utt_name=i+1, t2m_epoch=epoch, monotonic=False, ground_truth=True, dir=alignment_dir)
+        plot_alignment(hp, alignments[i], chars=chars[i], utt_name=basename(utt_names[i]), t2m_epoch=epoch, monotonic=False, ground_truth=True, dir=alignment_dir)
 
-def main_work():
-
-    #################################################
-            
-    # ============= Process command line ============
-    a = ArgumentParser()
-    a.add_argument('-c', dest='config', required=True, type=str)
-    a.add_argument('-m', dest='model_type', required=True, choices=['t2m', 'ssrn', 'babbler'])
-    opts = a.parse_args()
-    
-    # ===============================================
-    model_type = opts.model_type
-    hp = load_config(opts.config)
-    logdir = hp.logdir + "-" + model_type 
-    logger_setup.logger_setup(logdir)
-    info('Command line: %s'%(" ".join(sys.argv)))
-
-
+def get_validation_data(hp, model_type, mode):
     ### Prepare reference data for validation set:  ### TODO: alternative to holding in memory?
     if hp.multispeaker:
-        (valid_filenames, validation_text, speaker_codes) = load_data(hp, mode="validation", get_speaker_codes=True)
+        (valid_filenames, validation_text, speaker_codes) = load_data(hp, mode=mode, get_speaker_codes=True)
     else:
-        (valid_filenames, validation_text) = load_data(hp, mode="validation")
+        (valid_filenames, validation_text) = load_data(hp, mode=mode)
         speaker_codes = None  ## default
 
 
     ## take random subset of validation set to avoid 'This is a librivox recording' type sentences
     random.seed(1234)
     v_indices = range(len(valid_filenames))
-    random.shuffle(v_indices)
-    v = min(hp.validation_sentences_to_evaluate, len(valid_filenames))
-    v_indices = v_indices[:v]
+    # random.shuffle(v_indices)
+    # v = min(hp.validation_sentences_to_evaluate, len(valid_filenames)) ##NOTE JASON commented out for corrupt data experiment as we want to generate attention plots for whole validation/test set
+    # v_indices = v_indices[:v]
 
     if hp.multispeaker: ## now come back to this after v computed
         speaker_codes = np.array(speaker_codes)[v_indices].reshape(-1, 1)
@@ -116,9 +99,12 @@ def main_work():
     ## Get the text and mel inputs for the utts you would like to plot attention graphs for 
     if hp.plot_attention_every_n_epochs and model_type=='t2m': #check if we want to plot attention
         # TODO do we want to generate and plot attention for validation or training set sentences??? modify attention_inputs accordingly...
-        attention_inputs = validation_text[:hp.num_sentences_to_plot_attention, :]
-        attention_mels = validation_mels[:hp.num_sentences_to_plot_attention]
-        attention_mels = np.array(attention_mels) #TODO should be able to delete this line...?        
+        attention_inputs = validation_text
+        attention_mels = validation_mels
+        if hp.num_sentences_to_plot_attention > 0:
+            attention_inputs = attention_inputs[:hp.num_sentences_to_plot_attention]
+            attention_mels = attention_mels[:hp.num_sentences_to_plot_attention]
+        attention_mels = np.array(attention_mels)         
         attention_mels_array = np.zeros((len(attention_inputs), hp.max_T, hp.n_mels), np.float32) # create empty fixed size array to hold attention mels
         for i in range(len(attention_inputs)): # copy data into this fixed sized array
             attention_mels_array[i, :attention_mels[i].shape[0], :attention_mels[i].shape[1]] = attention_mels[i]
@@ -126,11 +112,38 @@ def main_work():
         #get phone seq
         _, idx2char = load_vocab(hp)
         attention_chars = attention_inputs.tolist()
-        # print('attention_inputs', attention_inputs.shape, attention_inputs[0].shape)
         for row in range(attention_inputs.shape[0]):
             for col in range(attention_inputs.shape[1]):
-                # print(attention_inputs[row][col], idx2char[attention_inputs[row][col]])
                 attention_chars[row][col] = idx2char[attention_inputs[row][col]]
+
+    return speaker_codes, valid_filenames, validation_mels, validation_inputs, validation_reference, validation_lengths, validation_reference, attention_inputs, attention_mels, attention_chars
+
+def main_work():
+
+    #################################################
+            
+    # ============= Process command line ============
+    a = ArgumentParser()
+    a.add_argument('-c', dest='config', required=True, type=str)
+    a.add_argument('-m', dest='model_type', required=True, choices=['t2m', 'ssrn', 'babbler'])
+    opts = a.parse_args()
+    
+    # ===============================================
+    model_type = opts.model_type
+    hp = load_config(opts.config)
+    logdir = hp.logdir + "-" + model_type 
+    logger_setup.logger_setup(logdir)
+    info('Command line: %s'%(" ".join(sys.argv)))
+
+    ##set random seed
+    if hp.random_seed is not None:
+        np.random.seed(hp.random_seed)
+        tf.set_random_seed(hp.random_seed)
+
+    ##get clean validation data 
+    speaker_codes, valid_filenames, validation_mels, validation_inputs, validation_reference, validation_lengths, validation_reference, attention_inputs, attention_mels, attention_chars = get_validation_data(hp, model_type, mode="validation")
+    ##get corrupted validation data
+    corrupted_speaker_codes, corrupted_valid_filenames, corrupted_validation_mels, corrupted_validation_inputs, corrupted_validation_reference, corrupted_validation_lengths, corrupted_validation_reference, corrupted_attention_inputs, corrupted_attention_mels, corrupted_attention_chars = get_validation_data(hp, model_type, mode="validation-corrupted")
 
     ## Map to appropriate type of graph depending on model_type:
     AppropriateGraph = {'t2m': Text2MelGraph, 'ssrn': SSRNGraph, 'babbler': BabblerGraph}[model_type]
@@ -198,7 +211,8 @@ def main_work():
 
         #plot attention generated from freshly initialised model
         if hp.plot_attention_every_n_epochs and model_type == 't2m' and epoch == 0: # ssrn model doesn't generate alignments 
-            get_and_plot_alignments(hp, epoch - 1, attention_graph, sess, attention_chars, attention_inputs, attention_mels, logdir + "/alignments") # epoch-1 refers to freshly initialised model
+            get_and_plot_alignments(hp, -1, attention_graph, sess, attention_chars, valid_filenames, attention_inputs, attention_mels, logdir + "/alignments") 
+            get_and_plot_alignments(hp, -1, attention_graph, sess, corrupted_attention_chars, corrupted_valid_filenames, corrupted_attention_inputs, corrupted_attention_mels, logdir + "/alignments-corrupted") 
  
         current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference)
         info('validation epoch {0}: {1:0.3f}'.format(epoch, current_score))
@@ -225,7 +239,8 @@ def main_work():
 
             ### End of epoch: plot attention matrices? #################################
             if hp.plot_attention_every_n_epochs and model_type == 't2m' and epoch % hp.plot_attention_every_n_epochs == 0: # ssrn model doesn't generate alignments 
-                get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_chars, attention_inputs, attention_mels, logdir + "/alignments")
+                get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_chars, valid_filenames, attention_inputs, attention_mels, logdir + "/alignments")
+                get_and_plot_alignments(hp, epoch, attention_graph, sess, corrupted_attention_chars, corrupted_valid_filenames, corrupted_attention_inputs, corrupted_attention_mels, logdir + "/alignments-corrupted") 
 
             ### Save end of each epoch (all but the most recent 5 will be overwritten):       
             stem = logdir + '/model_epoch_{0}'.format(epoch)

@@ -162,17 +162,17 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None):
 
         ##NOTE JASON - commented out below code as it for some reason fails when monotonic attention is turned off...
         ## Work out if we've reach end of any/all sentences in batch:-
-        # reached_end = (_max_attentions[:, j] >= ends) ## is attention focussing on or beyond end of textual sentence?
-        # endcounts += reached_end
-        # for (i,(current, endcount)) in enumerate(zip(t_ends, endcounts)):
-        #     if current == hp.max_T: ## if hasn't changed from initialisation value
-        #         if endcount >= endcount_threshold:
-        #             t_ends[i] = j
-        # ## Bail out early if all sentences seem to be finished:
-        # if (t_ends < hp.max_T).all():
-        #     print('finished here:')
-        #     print(t_ends)
-        #     break
+        reached_end = (_max_attentions[:, j] >= ends) ## is attention focussing on or beyond end of textual sentence?
+        endcounts += reached_end
+        for (i,(current, endcount)) in enumerate(zip(t_ends, endcounts)):
+            if current == hp.max_T: ## if hasn't changed from initialisation value
+                if endcount >= endcount_threshold:
+                    t_ends[i] = j
+        ## Bail out early if all sentences seem to be finished:
+        if (t_ends < hp.max_T).all():
+            print('finished here:')
+            print(t_ends)
+            break
 
     return (Y, t_ends.tolist(), alignments)
 
@@ -214,17 +214,17 @@ def synth_codedtext2mel_gtruth(hp, K, V, gtruth_mels, ends, g, sess, speaker_dat
 
         ##NOTE JASON - commented out below code as it for some reason fails when monotonic attention is turned off...
         ## Work out if we've reach end of any/all sentences in batch:-
-        # reached_end = (_max_attentions[:, j] >= ends) ## is attention focussing on or beyond end of textual sentence?
-        # endcounts += reached_end
-        # for (i,(current, endcount)) in enumerate(zip(t_ends, endcounts)):
-        #     if current == hp.max_T: ## if hasn't changed from initialisation value
-        #         if endcount >= endcount_threshold:
-        #             t_ends[i] = j
-        # ## Bail out early if all sentences seem to be finished:
-        # if (t_ends < hp.max_T).all():
-        #     print('finished here:')
-        #     print(t_ends)
-        #     break
+        reached_end = (_max_attentions[:, j] >= ends) ## is attention focussing on or beyond end of textual sentence?
+        endcounts += reached_end
+        for (i,(current, endcount)) in enumerate(zip(t_ends, endcounts)):
+            if current == hp.max_T: ## if hasn't changed from initialisation value
+                if endcount >= endcount_threshold:
+                    t_ends[i] = j
+        ## Bail out early if all sentences seem to be finished:
+        if (t_ends < hp.max_T).all():
+            print('finished here:')
+            print(t_ends)
+            break
 
     return alignments
 
@@ -334,24 +334,23 @@ def babble(hp, num_sentences=0):
 def synthesize(hp, speaker_id='', num_sentences=0):
     assert hp.vocoder=='griffin_lim', 'Other vocoders than griffin_lim not yet supported'
 
-    # Load data
+    # Load text data L (also retrieve ground truth mels so that we can get attention plots for them)
     (fpaths, L) = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
-    bases = [basename(fpath) for fpath in fpaths]
+    bases = [basename(fpath) for fpath in fpaths] #filenames used for logging purposes
+    gtruth_mels = [np.load(hp.coarse_audio_dir + os.path.sep + basename(fpath)+'.npy') for fpath in fpaths]
+    gtruth_mels_array = np.zeros((len(gtruth_mels), hp.max_T, hp.n_mels), np.float32) # create empty fixed size array to hold mels
+    for i in range(len(gtruth_mels)): # copy data into this fixed sized array
+        gtruth_mels_array[i, :gtruth_mels[i].shape[0], :gtruth_mels[i].shape[1]] = gtruth_mels[i]
+    gtruth_mels = gtruth_mels_array # rename for convenience
 
     # Load vocab used for getting phone sequence from our inputs (used for plotting on attention diagrams)
     _, idx2char = load_vocab(hp)
 
-    # Also retrieve ground truth mels so that we can get attention plots for them
-    mels = [np.load(hp.coarse_audio_dir + os.path.sep + basename(fpath)+'.npy') for fpath in fpaths]
-    mels_array = np.zeros((len(mels), hp.max_T, hp.n_mels), np.float32) # create empty fixed size array to hold mels
-    for i in range(len(mels)): # copy data into this fixed sized array
-        mels_array[i, :mels[i].shape[0], :mels[i].shape[1]] = mels[i]
-    mels = mels_array # rename for convenience
-
-    # Ensure we aren't trying to generate more utterances than are actually in our test_transcript
+    #trim down the length of our inputs according to the num_sentences option
     if num_sentences > 0:
-        assert num_sentences < len(bases)
-        L = L[:num_sentences, :]
+        assert num_sentences < len(bases) # Ensure we aren't trying to generate more utterances than are actually in our test_transcript
+        L = L[:num_sentences]
+        gtruth_mels = gtruth_mels[:num_sentences]
 
     # Get the input sequence phones/letters for each utterance (used to annotate attention diagrams)
     L_chars = L.tolist()
@@ -411,7 +410,7 @@ def synthesize(hp, speaker_id='', num_sentences=0):
         if (np.isnan(Z).any()):  ### TODO: keep?
             Z = np.nan_to_num(Z)
 
-        # Generate wav files
+        # ## Generate wav files
         outdir = os.path.join(hp.sampledir, 't2m%s_ssrn%s'%(t2m_epoch, ssrn_epoch))
         outdir = os.path.join(outdir, 'monotonic_attention') if hp.monotonic_attention else os.path.join(outdir, 'non-monotonic_attention')
         if speaker_id:
@@ -422,8 +421,7 @@ def synthesize(hp, speaker_id='', num_sentences=0):
         print("Generating wav files, will save to following dir: %s"%(wavdir))
         for i, mag in enumerate(Z):
             print("Working on %s"%(bases[i]))
-            mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length
-            
+            # mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length ##NOTE JASON - commented this out so that we always generate full waveform (to better analyse corrupted transcription cases)
             if hp.vocoder=='magphase_compressed':
                 mag = denorm(mag, s, hp.normtype)
                 streams = split_streams(mag, ['mag', 'lf0', 'vuv', 'real', 'imag'], [60,1,1,45,45])
@@ -434,7 +432,7 @@ def synthesize(hp, speaker_id='', num_sentences=0):
                 sys.exit('Unsupported vocoder type: %s'%(hp.vocoder))
             write(wavdir + "/{}.wav".format(bases[i]), hp.sr, wav)
 
-        # Plot synthesis attention alignments 
+        ## Plot synthesis attention alignments 
         plots_dir = os.path.join(outdir, 'gen_alignment_plots')
         safe_makedir(plots_dir)
         for i in range(len(gen_alignments)):
@@ -443,27 +441,42 @@ def synthesize(hp, speaker_id='', num_sentences=0):
         
         prev_max_attentions = np.zeros((len(K),), np.int32)
 
-        # Plot ground truth mel attention alignments 
+        ## Plot ground truth mel attention alignments 
         plots_dir = os.path.join(outdir, 'gtruth_alignment_plots')
         safe_makedir(plots_dir)
         if hp.monotonic_attention:
-            gtruth_alignments = synth_codedtext2mel_gtruth(hp, K, V, mels, text_lengths, g1, sess, speaker_data=speaker_data)
+            gtruth_alignments = synth_codedtext2mel_gtruth(hp, K, V, gtruth_mels, text_lengths, g1, sess, speaker_data=speaker_data)
         else:
             return_values = sess.run([g1.alignments], 
                                      {g1.L: L, 
-                                      g1.mels: mels}) 
+                                      g1.mels: gtruth_mels}) 
             gtruth_alignments = return_values[0] # sess run returns a list, so unpack this list
         for i in range(len(gtruth_alignments)):
             basefilename = plot_alignment(hp, gtruth_alignments[i], chars=L_chars[i], utt_name=bases[i], t2m_epoch=t2m_epoch, monotonic=hp.monotonic_attention, ground_truth=True, dir=plots_dir)
 
-        # Save attention matrices, phones, t_ends and other related information to disk
-        print('Saving alignments and other data to disk using pickle')
+        ## Save attention matrices, phones, t_ends and other related information to disk
+        print('Saving alignments and other data to disk')
         alignment_data_dir = os.path.join(outdir, 'alignment_data')
         safe_makedir(alignment_data_dir)
+        safe_makedir(os.path.join(alignment_data_dir, 'gen_attn_aligns')) #make directories for the different types of data that we want to save to disk
+        safe_makedir(os.path.join(alignment_data_dir, 'gtruth_attn_aligns'))
+        safe_makedir(os.path.join(alignment_data_dir, 'phones'))
+        safe_makedir(os.path.join(alignment_data_dir, 'n_frames'))
         for utt_name, gen_alignment, gtruth_alignment, L_char, length in zip(bases, gen_alignments, gtruth_alignments, L_chars, lengths):
-            monotonic_str = 'monotonic' if hp.monotonic_attention else 'non-monotonic'
-            pickle_file_name = '{}_{}_{}.pkl'.format(hp.config_name, monotonic_str, utt_name)
-            pickle.dump({'gen_alignment':gen_alignment, 'gtruth_alignment':gtruth_alignment, 'input_chars':L_char, 'decoder_timesteps':length}, open(os.path.join(alignment_data_dir, pickle_file_name), 'wb'))
+            np.save(os.path.join(alignment_data_dir, 'gen_attn_aligns', utt_name), gen_alignment)
+            print("shapes of alignment", gen_alignment.shape, gtruth_alignment.shape) #assert these shapes?
+            np.save(os.path.join(alignment_data_dir, 'gtruth_attn_aligns', utt_name), gtruth_alignment)
+            with open(os.path.join(alignment_data_dir, 'phones', utt_name + '.txt'), 'w') as f: f.write('\n'.join(L_char)) #one phone per line in a txt file
+            with open(os.path.join(alignment_data_dir, 'n_frames', utt_name + '.txt'), 'w') as f: f.write(str(length))
+
+            ### below code to save data as one pickle file
+            # monotonic_str = 'monotonic' if hp.monotonic_attention else 'non-monotonic'
+            # pickle_file_name = '{}_{}_{}.pkl'.format(hp.config_name, monotonic_str, utt_name)
+            # pickle.dump({'utt_name': utt_name,
+            #              'gen_alignment':gen_alignment, 
+            #              'gtruth_alignment':gtruth_alignment, 
+            #              'input_chars':L_char, 
+            #              'decoder_timesteps':length}, open(os.path.join(alignment_data_dir, pickle_file_name), 'wb'))
 
 def main_work():
 
@@ -481,6 +494,11 @@ def main_work():
     
     # ===============================================
     hp = load_config(opts.config)
+
+    ##set random seed
+    if hp.random_seed is not None:
+        np.random.seed(hp.random_seed)
+        tf.set_random_seed(hp.random_seed)
     
     if hp.multispeaker:
         assert opts.speaker, 'Please specify a speaker from speaker_list with -speaker flag'

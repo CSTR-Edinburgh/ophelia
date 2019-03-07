@@ -154,7 +154,7 @@ class Text2MelGraph(Graph):
                 elif self.mode is 'train': 
                     self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
                                                                             monotonic_attention=False,
-                                                                            prev_max_attentions=self.prev_max_attentions)
+                                                                            prev_max_attentions=None)
                 elif self.mode is 'synthesize_non_monotonic': 
                     self.R, self.alignments, self.max_attentions = Attention(self.hp, self.Q, self.K, self.V,
                                                                             monotonic_attention=False,

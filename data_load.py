@@ -46,17 +46,24 @@ def phones_normalize(text, char2idx):
 def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
     '''Loads data
       Args:
-          mode: "train" / "validation" / "synthesize".
+          mode: "train" / "validation" / "validation-corrupted" / "synthesize".
     '''
     logging.info('Start loading data in mode: %s'%(mode))
 
     # Load vocabulary
     char2idx, idx2char = load_vocab(hp)
 
-    if mode in ["train", "validation"]:
+    if mode == "train":
         transcript = os.path.join(hp.transcript)
-    else:
+    elif mode == "validation":
+        # transcript = os.path.join(hp.transcript) #NOTE JASON we just want to use test_transcript, it may contain training utts
         transcript = os.path.join(hp.test_transcript)
+    elif mode == "validation-corrupted":
+        transcript = os.path.join(hp.corrupted_test_transcript)
+    elif mode == "synthesize":
+        transcript = os.path.join(hp.test_transcript)
+    else:
+        raise ValueError("Received unexpected load_data mode.")
 
     if hp.multispeaker:
         speaker2ix = dict(zip(hp.speaker_list, range(len(hp.speaker_list))))
@@ -76,7 +83,7 @@ def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
         assert len(fields) >= 3,  fields
         fname, unnorm_text, norm_text = fields[:3]
 
-        if mode in ["train", "validation"] and os.path.exists(hp.coarse_audio_dir):
+        if mode in ["train", "validation", "validation-corrupted"] and os.path.exists(hp.coarse_audio_dir):
             mel = "{}/{}".format(hp.coarse_audio_dir, fname+".npy")
             if not os.path.exists(mel):
                 logging.debug('no file %s'%(mel))
@@ -95,9 +102,12 @@ def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
             if mode=="train": 
                 if hp.validpatt in fname:
                     continue
-            elif mode=="validation":
-                if hp.validpatt not in fname:
-                    continue
+            elif mode=="validation": 
+                # if hp.validpatt not in fname: #NOTE JASON we just want to use test_transcript, it may contain training utts
+                #     continue
+                pass
+            elif mode=="validatio-corrupted": 
+                pass
 
         if hp.input_type == 'phones':
             phones = phones_normalize(phones, char2idx) # in case of phones, all EOS markers are assumed included
@@ -126,7 +136,7 @@ def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
             speaker_ix = speaker2ix[speaker]
             speakers.append(np.array(speaker_ix, np.int32))                    
 
-    if mode=="validation":
+    if mode=="validation" or mode=="validation-corrupted":
         if len(texts)==0:
             logging.error('No validation sentences collected: maybe the validpatt %s matches no training data file names?'%(hp.validpatt)) ; sys.exit(1)
 
@@ -152,7 +162,7 @@ def load_data(hp, mode="train", get_speaker_codes=False, n_utts=0):
                 return fpaths, text_lengths, texts, speakers
             else:  
                 return fpaths, text_lengths, texts
-    elif mode=='validation':
+    elif mode=='validation' or mode=='validation-corrupted':
         #texts = [text for text in texts if len(text) <= hp.max_N]
         stacked_texts = np.zeros((len(texts), hp.max_N), np.int32)
         for i, text in enumerate(texts):
