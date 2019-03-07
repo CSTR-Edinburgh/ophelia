@@ -28,7 +28,7 @@ def phones_from_str(phones_str):
     return phones
 
 '''
-Corruption methods
+Corruption methods ###############################################################################
 '''
     
 def swap_halves(data):
@@ -62,16 +62,15 @@ def delete_phones(data, num_to_remove, corruption_percentage):
             removed_phones.append((removed_phone, len(phones)/2))
         print('removed', removed_phones)
         data[i][1] = '<_START_> ' + ' '.join(phones) + ' <_END_>\n' #recreate string
-    return data
 
 '''
-Corruption methods
+Corruption methods ###############################################################################
 '''
 
-def save_corrupted(data, transcript_path, out_dir, corruption_method, corruption_percentage):
+def save_corrupted(data, transcript_path, out_dir, filename):
     '''take the data, and save to disk'''
     transcript_file_name = os.path.basename(transcript_path)
-    out_file = os.path.join(out_dir, corruption_method + '_' + str(corruption_percentage) + '_' + transcript_file_name)
+    out_file = os.path.join(out_dir, filename + '_' + transcript_file_name)
     lines = []
     for the_rest, corrupted in data:
         lines.append(the_rest + corrupted) #join the strings together
@@ -107,16 +106,16 @@ def main():
     #call the appropriate corruption method to corrupt data
     if args.corruption_method == 'swap_halves':
         swap_halves(data)
+        save_corrupted(data, args.transcript_path, args.out_dir, filename=args.corruption_method)
     elif args.corruption_method == 'swap_phones':
         swap_phones(data)
     elif args.corruption_method == 'swap_words':
         swap_words(data)
     elif args.corruption_method == 'delete_phones':
         delete_phones(data, 3, args.corruption_percentage)
+        save_corrupted(data, args.transcript_path, args.out_dir, filename=args.corruption_method + '_' + str(args.corruption_percentage))
     else:
         raise ValueError("Unsupported --corruption_method, got {}.".format(args.corruption_method))
-
-    save_corrupted(data, args.transcript_path, args.out_dir, args.corruption_method, args.corruption_percentage)
 
 if __name__ == "__main__":
     main()
