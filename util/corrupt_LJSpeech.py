@@ -22,7 +22,7 @@ def load_transcript(transcript_path):
 def phones_from_str(phones_str):
     '''Given phone seq in a string, return a list of phones, ignore <_START_> and <_END_> tokens.'''
     assert phones_str is not None or phones_str is not '' #if error here, make sure input transcript file does not have any trailing new line chars
-    phones_str = phones_str.strip('<_START_>').strip('<_END_>\n')
+    phones_str = phones_str.strip('<_START_>').strip('<_END_>\n') #NOTE what if we are looking at the last line in the transcript file, is there a newline char?
     phones = phones_str.split(' ')
     phones = [p for p in phones if p is not '']
     return phones
