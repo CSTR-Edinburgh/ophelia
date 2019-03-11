@@ -26,7 +26,7 @@ from data_load import load_data
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
 from libutil import safe_makedir, basename
 from configuration import load_config
-
+from concurrent.futures import ProcessPoolExecutor
 
 def start_clock(comment):
     print ('%s... '%(comment)),
@@ -336,9 +336,14 @@ def babble(hp, num_sentences=0):
             write(outdir + "/{:03d}.wav".format(i), hp.sr, wav)
 
 
+def synth_wave(hp, mag, outfile):
+    wav = spectrogram2wav(hp, mag)
+    #outfile = magfile.replace('.mag.npy', '.wav')
+    #outfile = outfile.replace('.npy', '.wav')
+    soundfile.write(outfile, wav, hp.sr)
 
 
-def synthesize(hp, speaker_id='', num_sentences=0):
+def synthesize(hp, speaker_id='', num_sentences=0, ncores=1):
     assert hp.vocoder=='griffin_lim', 'Other vocoders than griffin_lim not yet supported'
 
     dataset = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
@@ -441,20 +446,40 @@ def synthesize(hp, speaker_id='', num_sentences=0):
             outdir += '_speaker-%s'%(speaker_id)
         safe_makedir(outdir)
         print("Generating wav files, will save to following dir: %s"%(outdir))
-        for i, mag in enumerate(Z):
-            print("Working on %s"%(bases[i]))
-            mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length
+
+        
+        assert hp.vocoder=='griffin_lim'
+
+        if ncores==1:
+            for i, mag in tqdm(enumerate(Z)):
+                outfile = os.path.join(outdir, bases[i] + '.wav')
+                mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length
+                synth_wave(hp, mag, outfile)
+        else:
+            executor = ProcessPoolExecutor(max_workers=ncores)    
+            futures = []
+            for i, mag in tqdm(enumerate(Z)):
+                outfile = os.path.join(outdir, bases[i] + '.wav')
+                mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length
+                futures.append(executor.submit(synth_wave, hp, mag, outfile))
+            proc_list = [future.result() for future in tqdm(futures)]
+
+        # for i, mag in enumerate(Z):
+        #     print("Working on %s"%(bases[i]))
+        #     mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length
             
-            if hp.vocoder=='magphase_compressed':
-                mag = denorm(mag, s, hp.normtype)
-                streams = split_streams(mag, ['mag', 'lf0', 'vuv', 'real', 'imag'], [60,1,1,45,45])
-                wav = magphase_synth_from_compressed(streams, samplerate=hp.sr)
-            elif hp.vocoder=='griffin_lim':                
-                wav = spectrogram2wav(hp, mag)
-            else:
-                sys.exit('Unsupported vocoder type: %s'%(hp.vocoder))
-            #write(outdir + "/{}.wav".format(bases[i]), hp.sr, wav)
-            soundfile.write(outdir + "/{}.wav".format(bases[i]), wav, hp.sr)
+        #     if hp.vocoder=='magphase_compressed':
+        #         mag = denorm(mag, s, hp.normtype)
+        #         streams = split_streams(mag, ['mag', 'lf0', 'vuv', 'real', 'imag'], [60,1,1,45,45])
+        #         wav = magphase_synth_from_compressed(streams, samplerate=hp.sr)
+        #     elif hp.vocoder=='griffin_lim':                
+        #         wav = spectrogram2wav(hp, mag)
+        #     else:
+        #         sys.exit('Unsupported vocoder type: %s'%(hp.vocoder))
+        #     #write(outdir + "/{}.wav".format(bases[i]), hp.sr, wav)
+        #     soundfile.write(outdir + "/{}.wav".format(bases[i]), wav, hp.sr)
+            
+
             
         # Plot attention alignments 
         for i in range(num_sentences):
@@ -472,6 +497,7 @@ def main_work():
     a.add_argument('-speaker', default='', type=str)
     a.add_argument('-N', dest='num_sentences', default=0, type=int)
     a.add_argument('-babble', action='store_true')
+    a.add_argument('-ncores', type=int, default=1, help='Number of CPUs for Griffin-Lim stage')
     
     opts = a.parse_args()
     
@@ -485,7 +511,7 @@ def main_work():
     if opts.babble:
         babble(hp, num_sentences=opts.num_sentences)
     else:
-        synthesize(hp, speaker_id=opts.speaker, num_sentences=opts.num_sentences)
+        synthesize(hp, speaker_id=opts.speaker, num_sentences=opts.num_sentences, ncores=opts.ncores)
 
 
 if __name__=="__main__":
