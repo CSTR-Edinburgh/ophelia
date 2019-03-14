@@ -1,6 +1,6 @@
 ## Semisupervised training
 
-# Babbler training
+### Babbler training
 
 Train 'babbler' (300 epochs only):
 
@@ -31,7 +31,9 @@ Synthesise by babbling:
 (Note: all sentences are currently seeded with the same start (all zeros from padding) so all babbled outputs will be identical)
 
 
-# Fine tuning with text as conventional model on transcribed subset (1000 sentences) of the data:
+### Fine tuning 
+
+Fine tune with text as conventional model on transcribed subset (1000 sentences) of the data:
 
 ```
  ./util/submit_tf.sh ./train.py -c ./config/lj_05.cfg -m t2m  
@@ -41,7 +43,9 @@ cp -rs /disk/scratch/oliver/dc_tts_osw_clean/work/lj_02/train-ssrn /disk/scratch
  ./util/submit_tf.sh ./synthesize.py -c ./config/lj_05.cfg -N 10
 ```
 
-# Compare training from scratch on 1000 sentences:
+### Baseline
+
+Compare training from scratch on 1000 sentences:
 
 ```
  ./util/submit_tf.sh ./train.py -c ./config/lj_04.cfg -m t2m     
