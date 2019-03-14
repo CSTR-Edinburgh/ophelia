@@ -5,7 +5,7 @@
 Train 'babbler' (300 epochs only):
 
 ```
-./util/submit_tf.sh ./train.py -c ./config/lj_03.cfg -m t2m 
+./util/submit_tf.sh ./train.py -c ./config/lj_03.cfg -m babbler 
 ```
 
 Note that this wasn't implemented when I trained the voice before - hope it works OK:
