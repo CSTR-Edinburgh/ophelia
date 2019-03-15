@@ -91,8 +91,17 @@ def load_data(hp, mode="train"):
         if line == '':
             continue
         fields = line.strip().split("|")
-        assert len(fields) >= 3,  fields
-        fname, unnorm_text, norm_text = fields[:3]
+
+        assert len(fields) >= 1,  fields
+        if len(fields) > 1:
+            assert len(fields) >= 3,  fields
+
+        fname = fields[0]
+        if len(fields) > 1:
+            unnorm_text, norm_text = fields[1:3]
+        else:
+            norm_text = None # to test if audio only
+
 
         if mode in ["train", "validation"] and os.path.exists(hp.coarse_audio_dir):
             mel = "{}/{}".format(hp.coarse_audio_dir, fname+".npy")
@@ -125,7 +134,9 @@ def load_data(hp, mode="train"):
             speaker_ix = speaker2ix[speaker]
             speakers.append(np.array(speaker_ix, np.int32))    
 
-        if hp.input_type == 'phones':
+        if norm_text is None:
+            letters_or_phones = [] #  [0] ## dummy 'text' (1 character of padding) where we are using audio only
+        elif hp.input_type == 'phones':
             if 'speaker_dependent_phones' in hp.multispeaker:
                 speaker_code = speaker
             else:
@@ -168,9 +179,10 @@ def load_data(hp, mode="train"):
                 assert duration_data.sum() == nframes*hp.r, (duration_data.sum(), nframes*hp.r)
             durations.append(duration_data)             
 
-        if hp.merlin_label_dir: ## only get shape here -- get the data later
-            label_length, _ = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")).shape
-            label_lengths.append(label_length)
+        # !TODO! check this -- duplicated!?
+        # if hp.merlin_label_dir: ## only get shape here -- get the data later
+        #     label_length, _ = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")).shape
+        #     label_lengths.append(label_length)
 
 
     if mode=="validation":
@@ -209,7 +221,7 @@ def load_data(hp, mode="train"):
             durations = [d.tostring() for d in durations]   
 
     if mode in ['validation', 'synthesis']:
-        ## Prepare a batch of 'stacked texts'
+        ## Prepare a batch of 'stacked texts' (matrix with number of rows==synthesis batch size, and each row an array of integers)
         stacked_texts = np.zeros((len(texts), hp.max_N), np.int32)
         for i, text in enumerate(texts):
             stacked_texts[i, :len(text)] = text
