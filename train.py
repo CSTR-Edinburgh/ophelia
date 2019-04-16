@@ -49,7 +49,8 @@ def compute_validation(hp, model_type, epoch, inputs, synth_graph, sess, speaker
     ## store parameters for later use:-
     valid_dir = '%s-%s/validation_epoch_%s'%(hp.logdir, model_type, epoch)
     safe_makedir(valid_dir)
-    for i in range(hp.validation_sentences_to_synth_params):  ### TODO: configure this
+    hp.validation_sentences_to_synth_params = min(hp.validation_sentences_to_synth_params, len(valid_filenames)) #if less sentences match the validation pattern than the value of 'hp.validation_sent_to_synth'
+    for i in range(hp.validation_sentences_to_synth_params):
         np.save(os.path.join(valid_dir, basename(valid_filenames[i])), validation_set_predictions[i])
     return score
 
