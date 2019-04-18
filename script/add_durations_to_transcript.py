@@ -122,7 +122,8 @@ def main_work():
     if sum([1 for i in labdir.glob('*.lab')]) == 0:
         sys.exit('No label files in %s'%(opts.labdir))
     
-    for labfile in sorted(labdir.glob('*.lab')):
+    for labfile in tqdm(sorted(labdir.glob('*.lab'))):
+
         if labfile.stem not in transcript:          
             continue
         if training:
@@ -143,7 +144,7 @@ def main_work():
         assert len(transcript[labfile.stem]['phones']) == len(timings), (len(transcript[labfile.stem]['phones']), len(timings), transcript[labfile.stem]['phones'], timings)
         transcript[labfile.stem]['duration'] = timings
 
-    #write_transcript(transcript, outfile, duration=True)
+    write_transcript(transcript, outfile, duration=True)
 
 def read_transcript(transcript_file):
     texts = codecs.open(transcript_file, 'r', 'utf-8', errors='ignore').readlines()
