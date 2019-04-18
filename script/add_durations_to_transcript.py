@@ -100,7 +100,11 @@ def main_work():
     a.add_argument('-t', dest='transcript_file', required=True)    
     a.add_argument('-o', dest='outfile', required=True)
     a.add_argument('-l', dest='labdir', required=True)   
-    a.add_argument('-f', dest='featdir', required=False, default='')          
+    a.add_argument('-f', dest='featdir', required=False, default='')   
+    
+    a.add_argument('-i', dest='inrate', type=float, default=5.0) 
+    a.add_argument('-o', dest='outrate', type=float, default=12.5)   
+
     opts = a.parse_args()
     
     # ===============================================
@@ -127,11 +131,11 @@ def main_work():
 
         if training:
             features = np.load((featdir / labfile.stem).with_suffix('.npy'))
-            audio_msec_length = features.shape[0] * 12.5
-            resampled_lengths = resample_timings(lengths, from_rate=5.0, to_rate=12.5, total_duration=audio_msec_length)
+            audio_msec_length = features.shape[0] * opts.outrate
+            resampled_lengths = resample_timings(lengths, from_rate=opts.inrate, to_rate=opts.outrate, total_duration=audio_msec_length)
         else:
-            resampled_lengths = resample_timings(lengths, from_rate=5.0, to_rate=12.5)
-        resampled_lengths_in_frames = (resampled_lengths / 12.5).astype(int)
+            resampled_lengths = resample_timings(lengths, from_rate=opts.inrate, to_rate=opts.outrate)
+        resampled_lengths_in_frames = (resampled_lengths / opts.outrate).astype(int)
         
         timings = match_up((mono, resampled_lengths_in_frames), transcript[labfile.stem]['phones'])
         assert len(transcript[labfile.stem]['phones']) == len(timings), (len(transcript[labfile.stem]['phones']), len(timings), transcript[labfile.stem]['phones'], timings)
