@@ -82,7 +82,7 @@ def resample_timings(lengths, from_rate=5.0, to_rate=12.5, total_duration=0):
 
     if total_duration:
         diff = total_duration - in_new_rate.sum()
-        assert in_new_rate.sum() <= total_duration
+        assert in_new_rate.sum() <= total_duration, (in_new_rate.sum(), total_duration)
         assert diff % to_rate == 0.0
         in_new_rate[-1] += diff
 
@@ -119,9 +119,11 @@ def main_work():
         training = False ## durations in labels are synthetic
     outfile = opts.outfile
 
+    if sum([1 for i in labdir.glob('*.lab')]) == 0:
+        sys.exit('No label files in %s'%(opts.labdir))
+    
     for labfile in sorted(labdir.glob('*.lab')):
-        print labfile.stem
-        if labfile.stem not in transcript:
+        if labfile.stem not in transcript:          
             continue
         if training:
             if labfile.stem not in featfiles:
@@ -140,9 +142,8 @@ def main_work():
         timings = match_up((mono, resampled_lengths_in_frames), transcript[labfile.stem]['phones'])
         assert len(transcript[labfile.stem]['phones']) == len(timings), (len(transcript[labfile.stem]['phones']), len(timings), transcript[labfile.stem]['phones'], timings)
         transcript[labfile.stem]['duration'] = timings
-    
 
-    write_transcript(transcript, outfile, duration=True)
+    #write_transcript(transcript, outfile, duration=True)
 
 def read_transcript(transcript_file):
     texts = codecs.open(transcript_file, 'r', 'utf-8', errors='ignore').readlines()
@@ -179,6 +180,7 @@ def write_transcript(texts, transcript_file, duration=False):
             line += '||%s'%(dur)  ## leave empty speaker ID field 
         f.write(line + '\n')
     f.close()
+    print 'Wrote to ' + transcript_file
 
 
 
