@@ -13,7 +13,8 @@ import imp
 import numpy as np
 
 from utils import spectrogram2wav
-from scipy.io.wavfile import write
+# from scipy.io.wavfile import write
+import soundfile
 
 import tqdm
 from concurrent.futures import ProcessPoolExecutor
@@ -33,7 +34,8 @@ def synth_wave(hp, magfile):
     #print magfile
     #print outfile
     #print 
-    write(outfile, hp.sr, wav)
+    # write(outfile, hp.sr, wav)
+    soundfile.write(outfile, wav, hp.sr)
 
 def main_work():
 

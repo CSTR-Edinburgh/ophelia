@@ -34,6 +34,7 @@ class Graph(object):
         ## mels: Reduced melspectrogram. (B, T/r, n_mels) float32
         ## mags: Magnitude. (B, T, n_fft//2+1) float32
         hp = self.hp
+
         if self.mode is 'train':
             batchdict = get_batch(hp, self.get_batchsize())
 
@@ -101,10 +102,13 @@ class Graph(object):
 
         hp = self.hp
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
-        self.lr = learning_rate_decay(hp.lr, self.global_step)
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.lr)
-        tf.summary.scalar("lr", self.lr)
+        if hp.decay_lr:
+            self.lr = learning_rate_decay(hp.lr, self.global_step)
+        else:
+            self.lr = hp.lr
 
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=hp.beta1, beta2=hp.beta2, epsilon=hp.epsilon)
+        tf.summary.scalar("lr", self.lr)
         
         if self.hp.update_weights:
             train_variables = filter_variables_for_update(self.hp.update_weights)

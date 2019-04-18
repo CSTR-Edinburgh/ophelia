@@ -17,7 +17,11 @@ CONFIG_DEFAULTS = [
     ('merlin_label_dir', '', 'npy format phone labels converted from merlin using process_merlin_label.py'),
     ('merlin_lab_dim', 592, ''),
     ('bucket_data_by', 'text_length', 'One of audio_length/text_length. Label length will be used if merlin_label_dir is set and bucket_data_by=="text_length"'),
-    ('history_type', 'DCTTS_standard', 'DCTTS_standard/fractional_position_in_phone/absolute_position_in_phone/minimal_history')
+    ('history_type', 'DCTTS_standard', 'DCTTS_standard/fractional_position_in_phone/absolute_position_in_phone/minimal_history'),
+    ('beta1', 0.9, 'ADAM setting - default value from original dctss repo'),
+    ('beta2', 0.999, 'ADAM setting - default value from original dctss repo'),
+    ('epsilon', 0.00000001 , 'ADAM setting - default value from original dctss repo'),
+    ('decay_lr', True , 'learning rate decay - default value from original dctss repo')
 ]
 
 
