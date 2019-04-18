@@ -101,9 +101,9 @@ def main_work():
     a.add_argument('-o', dest='outfile', required=True)
     a.add_argument('-l', dest='labdir', required=True)   
     a.add_argument('-f', dest='featdir', required=False, default='')   
-    
-    a.add_argument('-i', dest='inrate', type=float, default=5.0) 
-    a.add_argument('-o', dest='outrate', type=float, default=12.5)   
+
+    a.add_argument('-ir', dest='inrate', type=float, default=5.0) 
+    a.add_argument('-or', dest='outrate', type=float, default=12.5)   
 
     opts = a.parse_args()
     
