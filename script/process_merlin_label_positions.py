@@ -41,7 +41,7 @@ def minmax_norm(X, data_min, data_max):
 def process_merlin_positions(bin_label_fname, audio_dir, phonedim=416, subphonedim=9, \
                     inrate=5.0, outrate=12.5):
 
-    audio_fname = os.path.join(text_lab_dir, basename(bin_label_fname) + '.npy')
+    audio_fname = os.path.join(audio_dir, basename(bin_label_fname) + '.npy')
     assert os.path.isfile(audio_fname), 'No audio file for %s '%(basename(bin_label_fname))
     audio = np.load(audio_fname)
 
