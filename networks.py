@@ -435,7 +435,6 @@ def LinearTransformLabels(hp, L, training=True, reuse=None):
                     dropout_rate=hp.dropout_rate,
                     activation_fn=None,
                     training=training,
-                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
-                    codes=speaker_codes)
+                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse)
     return tensor
 
