@@ -381,12 +381,20 @@ def get_batch(hp, batchsize):
                 positions = end_pad_for_reduction_shape_sync(positions, hp)
                 positions = positions[random_start_position::hp.r, :]                   
                 return fname, mel, mag, duration_matrix, positions
+            def _load_and_reduce_spectrograms_and_durations_and_merlin_positions(fpath, duration):
+                fname, mel, mag, duration_matrix, random_start_position = _load_and_reduce_spectrograms_and_durations(fpath, duration)
+                positions = durations_to_position(duration, fractional=False)
+                positions = end_pad_for_reduction_shape_sync(positions, hp)
+                positions = positions[random_start_position::hp.r, :]                   
+                return fname, mel, mag, duration_matrix, positions
 
             if hp.use_external_durations:
                 if hp.history_type == 'fractional_position_in_phone':
                     fname, mel, mag, duration_matrix, position_in_phone = tf.py_func(_load_and_reduce_spectrograms_and_durations_and_fractional_positions, [fpath, duration], [tf.string, tf.float32, tf.float32, tf.float32, tf.float32])
                 elif hp.history_type == 'absolute_position_in_phone':
                     fname, mel, mag, duration_matrix, position_in_phone = tf.py_func(_load_and_reduce_spectrograms_and_durations_and_absolute_positions, [fpath, duration], [tf.string, tf.float32, tf.float32, tf.float32, tf.float32])
+                elif hp.history_type == 'merlin_position_from_file':
+                    fname, mel, mag, duration_matrix, position_in_phone = tf.py_func(_load_and_reduce_spectrograms_and_durations_and_merlin_positions, [fpath, duration], [tf.string, tf.float32, tf.float32, tf.float32, tf.float32])
                 else:
                     fname, mel, mag, duration_matrix, _ = tf.py_func(_load_and_reduce_spectrograms_and_durations, [fpath, duration], [tf.string, tf.float32, tf.float32, tf.float32, tf.int16])
             else:
