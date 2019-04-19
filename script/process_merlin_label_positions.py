@@ -56,7 +56,7 @@ def process_merlin_positions(bin_label_fname, audio_dir, phonedim=416, subphoned
 
     old_x = np.linspace((inrate/2.0), nframes*inrate, nframes, endpoint=False)  ## place points at frame centres
     
-    f = interpolate.interp1d(old_x, positions, axis=0, kind='nearest') ## nearest to avoid weird averaging effects near segment boundaries
+    f = interpolate.interp1d(old_x, positions, axis=0, kind='nearest', bounds_error=False, fill_value='extrapolate') ## nearest to avoid weird averaging effects near segment boundaries
 
     new_x = np.linspace((outrate/2.0), new_nframes*outrate, new_nframes, endpoint=False)
     new_positions = f(new_x)  
