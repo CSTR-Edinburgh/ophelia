@@ -5,7 +5,7 @@ Based on code by kyubyong park at https://www.github.com/kyubyong/dc_tts
 '''
 
 from data_load import get_batch, load_vocab
-from networks import TextEnc, AudioEnc, AudioDec, Attention, SSRN, FixedAttention
+from networks import TextEnc, AudioEnc, AudioDec, Attention, SSRN, FixedAttention, LinearTransformLabels
 import tensorflow as tf
 from utils import get_global_attention_guide, learning_rate_decay
 
@@ -180,7 +180,8 @@ class Text2MelGraph(Graph):
                 self.K = self.V = self.merlin_label
             elif self.hp.text_encoder_type=='minimal_feedforward':
                 assert self.hp.merlin_label_dir
-                sys.exit('Not implemented: hp.text_encoder_type=="minimal_feedforward"')
+                #sys.exit('Not implemented: hp.text_encoder_type=="minimal_feedforward"')
+                self.K = self.V = LinearTransformLabels(self.hp, self.merlin_label, training=self.training, reuse=self.reuse)
             else: ## default DCTTS text encoder
                 with tf.variable_scope("TextEnc"):
                     self.K, self.V = TextEnc(self.hp, self.L, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)  # (N, Tx, e)

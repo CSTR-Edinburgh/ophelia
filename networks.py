@@ -417,3 +417,25 @@ def SSRN(hp, Y, training=True, speaker_codes=None, reuse=None):
                scope="C_{}".format(i), normtype=hp.norm, reuse=reuse)
     Z = tf.nn.sigmoid(logits)
     return logits, Z
+
+
+def LinearTransformLabels(hp, L, training=True, reuse=None):
+    '''
+    Args:
+      L: Text inputs. (B, N, labdim)
+
+    Return:
+        K or V: Keys. (B, N, d)
+    '''
+    i = 1
+    tensor = conv1d(L,
+                    filters=hp.d,
+                    size=1,
+                    rate=1,
+                    dropout_rate=hp.dropout_rate,
+                    activation_fn=None,
+                    training=training,
+                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                    codes=speaker_codes)
+    return tensor
+
