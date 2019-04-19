@@ -343,7 +343,10 @@ def synth_wave(hp, mag, outfile):
     soundfile.write(outfile, wav, hp.sr)
 
 
-def synthesize(hp, speaker_id='', num_sentences=0, ncores=1):
+def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir=''):
+    '''
+    topoutdir: store samples under here; defaults to hp.sampledir
+    '''
     assert hp.vocoder=='griffin_lim', 'Other vocoders than griffin_lim not yet supported'
 
     dataset = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
@@ -431,7 +434,6 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1):
         # print(Y[0,:,:])
         # print (np.isnan(Y).any())
         # print('nan1')
-
         # Then pass output Y of Text2Mel Graph through SSRN graph to get high res spectrogram Z.
         t = start_clock('Mel2Mag generating...')
         Z = synth_mel2mag(hp, Y, g2, sess)
@@ -441,7 +443,9 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1):
             Z = np.nan_to_num(Z)
 
         # Generate wav files
-        outdir = os.path.join(hp.sampledir, 't2m%s_ssrn%s'%(t2m_epoch, ssrn_epoch))
+        if not topoutdir:
+            topoutdir = hp.sampledir
+        outdir = os.path.join(topoutdir, 't2m%s_ssrn%s'%(t2m_epoch, ssrn_epoch))
         if speaker_id:
             outdir += '_speaker-%s'%(speaker_id)
         safe_makedir(outdir)
@@ -498,12 +502,18 @@ def main_work():
     a.add_argument('-N', dest='num_sentences', default=0, type=int)
     a.add_argument('-babble', action='store_true')
     a.add_argument('-ncores', type=int, default=1, help='Number of CPUs for Griffin-Lim stage')
+    a.add_argument('-odir', type=str, default='', help='Alternative place to put output samples')
+
     
     opts = a.parse_args()
     
     # ===============================================
     hp = load_config(opts.config)
     
+    outdir = opts.odir
+    if outdir:
+        outdir = os.path.join(outdir, basename(opts.config))
+
     if hp.multispeaker:
         assert opts.speaker, 'Please specify a speaker from speaker_list with -speaker flag'
         assert opts.speaker in hp.speaker_list
@@ -511,7 +521,7 @@ def main_work():
     if opts.babble:
         babble(hp, num_sentences=opts.num_sentences)
     else:
-        synthesize(hp, speaker_id=opts.speaker, num_sentences=opts.num_sentences, ncores=opts.ncores)
+        synthesize(hp, speaker_id=opts.speaker, num_sentences=opts.num_sentences, ncores=opts.ncores, topoutdir=outdir)
 
 
 if __name__=="__main__":
