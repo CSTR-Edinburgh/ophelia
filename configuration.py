@@ -50,7 +50,7 @@ class Hyperparams(object):
 
 def load_config(config_fname):        
     config = os.path.abspath(config_fname)
-    assert os.path.isfile(config)
+    assert os.path.isfile(config), 'Config file %s does not exist'%(config)
     settings = imp.load_source('config', config)
     hp = Hyperparams(settings)
     hp.validate()
