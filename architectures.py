@@ -155,7 +155,7 @@ class SSRNGraph(Graph):
         # total loss
         try:  ## new way to configure loss weights:- TODO: ensure all configs use new pattern, and remove 'except' branch
             # total loss, with 2 terms combined with loss weights:
-            self.loss = (hp.loss_weights['ssrn']['L1'] * self.loss_mels) + \
+            self.loss = (hp.loss_weights['ssrn']['L1'] * self.loss_mags) + \
                         (hp.loss_weights['ssrn']['binary_divergence'] * self.loss_bd2) +\
                         (hp.loss_weights['ssrn']['L2'] * self.loss_l2)
             print("New loss weight format used!")
