@@ -72,8 +72,8 @@ def process(fpath, worlddir='', outdir='', scaler=''):
     assert scaler
     speech = load_sentence(fpath, worlddir=worlddir, outdir=outdir)
     norm_speech = standardise_acoustics(speech, scaler)
-    np.save('%s/full_world/%s'%(outdir, basename(fpath)), norm_speech)
-    np.save('%s/coarse_world/%s'%(outdir, basename(fpath)), norm_speech[::4, :])
+    np.save('%s/full_world/%s'%(outdir, basename(fpath)), norm_speech.astype(np.float32))
+    np.save('%s/coarse_world/%s'%(outdir, basename(fpath)), norm_speech[::4, :].astype(np.float32))
 
 
 def update_normalisation_stats(acoustic_data, scaler):
