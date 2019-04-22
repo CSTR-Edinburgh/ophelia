@@ -142,6 +142,10 @@ class SSRNGraph(Graph):
             self.Z_logits, self.Z = SSRN(self.hp, self.mels, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)
 
     def build_loss(self):
+
+        ## L2 loss (new)
+        self.loss_l2 = tf.reduce_mean(tf.squared_difference(self.Z, self.mags))
+
         # mag L1 loss
         self.loss_mags = tf.reduce_mean(tf.abs(self.Z - self.mags))
 
@@ -149,12 +153,20 @@ class SSRNGraph(Graph):
         self.loss_bd2 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Z_logits, labels=self.mags))
 
         # total loss
-        self.lw_mag = self.hp.lw_mag
-        self.lw_bd2 = self.hp.lw_bd2                    
-        self.loss = (self.lw_mag * self.loss_mags) + (self.lw_bd2 * self.loss_bd2)
+        try:  ## new way to configure loss weights:- TODO: ensure all configs use new pattern, and remove 'except' branch
+            # total loss, with 2 terms combined with loss weights:
+            self.loss = (hp.loss_weights['ssrn']['L1'] * self.loss_mels) + \
+                        (hp.loss_weights['ssrn']['binary_divergence'] * self.loss_bd) +\
+                        (hp.loss_weights['ssrn']['L2'] * self.loss_l2)
+
+        except:
+            self.lw_mag = self.hp.lw_mag
+            self.lw_bd2 = self.hp.lw_bd2       
+            self.lw_ssrn_l2 = self.hp.lw_ssrn_l2                    
+            self.loss = (self.lw_mag * self.loss_mags) + (self.lw_bd2 * self.loss_bd2) + (self.lw_ssrn_l2 * self.loss_l2)
 
         # loss_components attribute is used for reporting to log (osw)
-        self.loss_components = [self.loss, self.loss_mags, self.loss_bd2]
+        self.loss_components = [self.loss, self.loss_mags, self.loss_bd2, self.loss_l2]
 
         # summary used for reporting to tensorboard (kp)
         tf.summary.scalar('train/loss_mags', self.loss_mags)
@@ -220,6 +232,10 @@ class Text2MelGraph(Graph):
 
     def build_loss(self):
         hp = self.hp
+
+        ## L2 loss (new)
+        self.loss_l2 = tf.reduce_mean(tf.squared_difference(self.Y, self.mels))
+
         # mel L1 loss
         self.loss_mels = tf.reduce_mean(tf.abs(self.Y - self.mels))
 
@@ -236,16 +252,23 @@ class Text2MelGraph(Graph):
         self.loss_att /= self.mask_sum
 
         # total loss
+        try:  ## new way to configure loss weights:- TODO: ensure all configs use new pattern, and remove 'except' branch
+            # total loss, with 2 terms combined with loss weights:
+            self.loss = (hp.loss_weights['t2m']['L1'] * self.loss_mels) + \
+                        (hp.loss_weights['t2m']['binary_divergence'] * self.loss_bd1) +\
+                        (hp.loss_weights['t2m']['attention'] * self.loss_att) +\
+                        (hp.loss_weights['t2m']['L2'] * self.loss_l2)
 
-        ## loss weights
-        self.lw_mel = hp.lw_mel
-        self.lw_bd1 = hp.lw_bd1
-        self.lw_att = hp.lw_att                                            
-        
-        self.loss = (self.lw_mel * self.loss_mels) + (self.lw_bd1 * self.loss_bd1) + (self.lw_att * self.loss_att)
+        except:
+            self.lw_mel = hp.lw_mel
+            self.lw_bd1 = hp.lw_bd1
+            self.lw_att = hp.lw_att     
+            self.lw_t2m_l2 = self.hp.lw_t2m_l2                    
+            self.loss = (self.lw_mel * self.loss_mels) + (self.lw_bd1 * self.loss_bd1) + (self.lw_att * self.loss_att) + (self.lw_t2m_l2 * self.loss_l2)
 
         # loss_components attribute is used for reporting to log (osw)
-        self.loss_components = [self.loss, self.loss_mels, self.loss_bd1, self.loss_att]
+        self.loss_components = [self.loss, self.loss_mels, self.loss_bd1, self.loss_att, self.loss_l2]
+
 
         # summary used for reporting to tensorboard (kp)
         tf.summary.scalar('train/loss_mels', self.loss_mels)
