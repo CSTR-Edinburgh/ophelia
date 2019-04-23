@@ -164,6 +164,8 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None, duration_dat
     t_ends = np.ones(ends.shape, dtype=int) * hp.max_T  ## The frame index when endcounts is sufficiently high, which we'll consider the end of the utterance
                                                         ## NB: initialised to max_T -- will default to this.
 
+    if hp.use_external_durations:
+        t_ends = duration_data.sum(axis=(1,2))
 
     t = start_clock('gen')
     feeddict = {g.K: K, g.V: V, g.mels: Y, g.prev_max_attentions: prev_max_attentions}
@@ -206,17 +208,23 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None, duration_dat
         feeddict[g.prev_max_attentions] = prev_max_attentions
 
         ## Work out if we've reach end of any/all sentences in batch:-
-        reached_end = (_max_attentions[:, j] >= ends) ## is attention focussing on or beyond end of textual sentence?
-        endcounts += reached_end
-        for (i,(current, endcount)) in enumerate(zip(t_ends, endcounts)):
-            if current == hp.max_T: ## if hasn't changed from initialisation value
-                if endcount >= endcount_threshold:
-                    t_ends[i] = j
-        ## Bail out early if all sentences seem to be finished:
-        if (t_ends < hp.max_T).all():
-            print('finished here:')
-            print(t_ends)
-            break
+        if hp.use_external_durations:
+            if j>=t_ends.max():
+                print('finished here with fixed durations')
+                print(t_ends)
+                break
+        else:
+            reached_end = (_max_attentions[:, j] >= ends) ## is attention focussing on or beyond end of textual sentence?
+            endcounts += reached_end
+            for (i,(current, endcount)) in enumerate(zip(t_ends, endcounts)):
+                if current == hp.max_T: ## if hasn't changed from initialisation value
+                    if endcount >= endcount_threshold:
+                        t_ends[i] = j
+            ## Bail out early if all sentences seem to be finished:
+            if (t_ends < hp.max_T).all():
+                print('finished here with attention based alignment')
+                print(t_ends)
+                break
 
     return (Y, t_ends.tolist(), alignments)
 
