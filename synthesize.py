@@ -314,6 +314,20 @@ def restore_latest_model_parameters(sess, hp, model_type):
     print("Model of type %s restored from latest epoch %s"%(model_type, latest_epoch))
     return latest_epoch
 
+## TODO: refactor to combine much of restore_archived_model_parameters and restore_latest_model_parameters(sess, hp, model_type):
+def restore_archived_model_parameters(sess, hp, model_type, epoch_number):
+    model_types = {  't2m': 'Text2Mel', 
+                    'ssrn': 'SSRN', 
+                    'babbler': 'Text2Mel'
+                  }  ## map model type to string used in scope
+    scope = model_types[model_type]
+    var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope)
+    saver = tf.train.Saver(var_list=var_list)
+    desired_checkpoint = hp.logdir + "-" + model_type + "/archive/model_epoch_" + str(epoch_number)
+    if not os.path.isfile(desired_checkpoint + '.index'): sys.exit('No %s at %s?'%(model_type, desired_checkpoint))
+    saver.restore(sess, desired_checkpoint)
+    print("Model of type %s restored from archived epoch %s"%(model_type, epoch_number))
+    
 
 def babble(hp, num_sentences=0):
 
@@ -368,31 +382,18 @@ def world_synthesis(features, outfile, hp, vuv_thresh=0.7, logf0=True):
 
     ## handle F0:
     fz = streamdata['lf0']
-
-    #print (fz[:100])
-    fz = np.exp(fz)
-    #put_speech(fz, outfile+'.f0a')        
-    #print (fz[:100])    
+    fz = np.exp(fz) 
     fz[streamdata['vuv']<vuv_thresh] = 0.0
-    #print (fz[:100])
-    #sys.exit('advsv')   
-
-
-
+  
     bap = np.minimum(streamdata['bap'], 0.0)
     mgc = streamdata['mgc']
-
-
-    #fz = np.ones(fz.shape) * 100.0
-    #bap = np.ones(bap.shape) * -0.5
-    #mgc = np.ones(mgc.shape) * 1.0
 
     put_speech(fz[:-1,:], outfile+'.f0')
     put_speech(bap[:-1,:], outfile+'.ap')
     put_speech(mgc[:-1,:], outfile+'.mgc')
 
     for stream in ['f0', 'ap']: # , 'mgc']:  
-        print ('doubles for ' + stream) 
+        #print ('doubles for ' + stream) 
         comm=hp.sptk+"/x2x -o +fd "+outfile + "."+stream+" > " + outfile +".d"+stream 
         # print(comm)
         os.system(comm)
@@ -408,7 +409,7 @@ def world_synthesis(features, outfile, hp, vuv_thresh=0.7, logf0=True):
                                                                 os.path.join(hp.sptk, "sopr"), \
                                                                 os.path.join(hp.sptk, "x2x"), \
                                                                 outfile+".sp")
-    print(mgc2sp_cmd)
+    # print(mgc2sp_cmd)
     os.system(mgc2sp_cmd)    
     '''Avoid:   x2x : error: input data is over the range of type 'double'!
            -o      : clip by minimum and maximum of output data            
@@ -419,12 +420,12 @@ def world_synthesis(features, outfile, hp, vuv_thresh=0.7, logf0=True):
 
 
     ## synth:
-    comm = '%s 1024 %s %s.df0 %s.sp %s.dap %s'%(hp.world_synthesis_binary, hp.sr, outfile,outfile,outfile,outfile)
-    print (comm)
+    comm = '%s 1024 %s %s.df0 %s.sp %s.dap %s > %s.log'%(hp.world_synthesis_binary, hp.sr, outfile,outfile,outfile,outfile,outfile)
+    # print (comm)
     os.system(comm)
 
     ## clean up:
-    comm = 'rm %s.f0 %s.sp %s.ap %s.mgc %s.df0 %s.dap %s.dmgc'%(outfile,outfile,outfile,outfile,outfile,outfile,outfile)
+    comm = 'rm %s.f0 %s.sp %s.ap %s.mgc %s.df0 %s.dap %s.log'%(outfile,outfile,outfile,outfile,outfile,outfile,outfile)
     os.system(comm)
     
 
@@ -437,9 +438,10 @@ def synth_wave(hp, mag, outfile):
     elif hp.vocoder == 'world':
         world_synthesis(mag, outfile, hp)
 
-def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir=''):
+def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_epoch=-1, ssrn_epoch=-1):
     '''
     topoutdir: store samples under here; defaults to hp.sampledir
+    t2m_epoch and ssrn_epoch: default -1 means use latest. Otherwise go to archived models.
     '''
     assert hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
 
@@ -504,8 +506,15 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir=''):
         ### TODO: specify epoch from comm line?
         ### TODO: t2m and ssrn from separate configs?
 
-        t2m_epoch = restore_latest_model_parameters(sess, hp, 't2m')
-        ssrn_epoch = restore_latest_model_parameters(sess, hp, 'ssrn')
+        if t2m_epoch > -1:
+            restore_archived_model_parameters(sess, hp, 't2m', t2m_epoch)
+        else:
+            t2m_epoch = restore_latest_model_parameters(sess, hp, 't2m')
+
+        if ssrn_epoch > -1:    
+            restore_archived_model_parameters(sess, hp, 'ssrn', ssrn_epoch)
+        else:
+            ssrn_epoch = restore_latest_model_parameters(sess, hp, 'ssrn')
 
         # Pass input L through Text2Mel Graph
         t = start_clock('Text2Mel generating...')
@@ -598,6 +607,8 @@ def main_work():
     a.add_argument('-ncores', type=int, default=1, help='Number of CPUs for Griffin-Lim stage')
     a.add_argument('-odir', type=str, default='', help='Alternative place to put output samples')
 
+    a.add_argument('-t2m_epoch', default=-1, type=int, help='Default: use latest (-1)')
+    a.add_argument('-ssrn_epoch', default=-1, type=int, help='Default: use latest (-1)')
     
     opts = a.parse_args()
     
@@ -615,7 +626,8 @@ def main_work():
     if opts.babble:
         babble(hp, num_sentences=opts.num_sentences)
     else:
-        synthesize(hp, speaker_id=opts.speaker, num_sentences=opts.num_sentences, ncores=opts.ncores, topoutdir=outdir)
+        synthesize(hp, speaker_id=opts.speaker, num_sentences=opts.num_sentences, \
+                ncores=opts.ncores, topoutdir=outdir, t2m_epoch=opts.t2m_epoch, ssrn_epoch=opts.ssrn_epoch)
 
 
 if __name__=="__main__":
