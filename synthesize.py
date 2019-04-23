@@ -28,6 +28,10 @@ from libutil import safe_makedir, basename
 from configuration import load_config
 from concurrent.futures import ProcessPoolExecutor
 
+
+from libutil import put_speech
+
+
 def start_clock(comment):
     print ('%s... '%(comment)),
     return (timeit.default_timer(), comment)
@@ -336,18 +340,100 @@ def babble(hp, num_sentences=0):
             write(outdir + "/{:03d}.wav".format(i), hp.sr, wav)
 
 
-def synth_wave(hp, mag, outfile):
-    wav = spectrogram2wav(hp, mag)
-    #outfile = magfile.replace('.mag.npy', '.wav')
-    #outfile = outfile.replace('.npy', '.wav')
-    soundfile.write(outfile, wav, hp.sr)
+def world_synthesis(features, outfile, hp, vuv_thresh=0.7, logf0=True):
 
+    ## denorm:
+    s = np.load(hp.feat_norm_file)
+    mean = s[0,:].reshape(1,-1)   
+    std = s[1,:].reshape(1,-1)
+    features = (features * std * 1.2) + mean
+
+    ## split stream:
+    streamdata = {}
+    start = 0
+    streamlist = [('lf0', 1),('vuv', 1),('mgc', 60),('bap', 1)]
+    
+    for (stream, dim) in streamlist:
+        end = start + dim
+        streamdata[stream] = features[:, start:end]
+        start = end
+
+    ## handle F0:
+    fz = streamdata['lf0']
+
+    #print (fz[:100])
+    fz = np.exp(fz)
+    #put_speech(fz, outfile+'.f0a')        
+    #print (fz[:100])    
+    fz[streamdata['vuv']<vuv_thresh] = 0.0
+    #print (fz[:100])
+    #sys.exit('advsv')   
+
+
+
+    bap = np.minimum(streamdata['bap'], 0.0)
+    mgc = streamdata['mgc']
+
+
+    #fz = np.ones(fz.shape) * 100.0
+    #bap = np.ones(bap.shape) * -0.5
+    #mgc = np.ones(mgc.shape) * 1.0
+
+    put_speech(fz[:-1,:], outfile+'.f0')
+    put_speech(bap[:-1,:], outfile+'.ap')
+    put_speech(mgc[:-1,:], outfile+'.mgc')
+
+    for stream in ['f0', 'ap']: # , 'mgc']:  
+        print ('doubles for ' + stream) 
+        comm=hp.sptk+"/x2x -o +fd "+outfile + "."+stream+" > " + outfile +".d"+stream 
+        # print(comm)
+        os.system(comm)
+
+    nFFTHalf = {16000: 1024, 22050: 1024, 44100: 2048, 48000: 2048}
+    alpha = {16000: 0.58, 22050: 0.65, 44100: 0.76, 48000: 0.77}
+
+    mcsize = 59
+    ## convert mgc -> sp with line from merlin script:
+    mgc2sp_cmd = "%s -a %f -g 0 -m %d -l %d -o 2 %s | %s -d 32768.0 -P | %s +fd -o > %s" % (os.path.join(hp.sptk, "mgc2sp"), 
+                                                                alpha[hp.sr], mcsize, nFFTHalf[hp.sr], \
+                                                                outfile+".mgc", \
+                                                                os.path.join(hp.sptk, "sopr"), \
+                                                                os.path.join(hp.sptk, "x2x"), \
+                                                                outfile+".sp")
+    print(mgc2sp_cmd)
+    os.system(mgc2sp_cmd)    
+    '''Avoid:   x2x : error: input data is over the range of type 'double'!
+           -o      : clip by minimum and maximum of output data            
+             type if input data is over the range of               
+             output data type.
+    '''    
+
+
+
+    ## synth:
+    comm = '%s 1024 %s %s.df0 %s.sp %s.dap %s'%(hp.world_synthesis_binary, hp.sr, outfile,outfile,outfile,outfile)
+    print (comm)
+    os.system(comm)
+
+    ## clean up:
+    comm = 'rm %s.f0 %s.sp %s.ap %s.mgc %s.df0 %s.dap %s.dmgc'%(outfile,outfile,outfile,outfile,outfile,outfile,outfile)
+    os.system(comm)
+    
+
+def synth_wave(hp, mag, outfile):
+    if hp.vocoder == 'griffin_lim':
+        wav = spectrogram2wav(hp, mag)
+        #outfile = magfile.replace('.mag.npy', '.wav')
+        #outfile = outfile.replace('.npy', '.wav')
+        soundfile.write(outfile, wav, hp.sr)
+    elif hp.vocoder == 'world':
+        world_synthesis(mag, outfile, hp)
 
 def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir=''):
     '''
     topoutdir: store samples under here; defaults to hp.sampledir
     '''
-    assert hp.vocoder=='griffin_lim', 'Other vocoders than griffin_lim not yet supported'
+    assert hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
 
     dataset = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
     fpaths, L = dataset['fpaths'], dataset['texts']
@@ -452,7 +538,7 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir=''):
         print("Generating wav files, will save to following dir: %s"%(outdir))
 
         
-        assert hp.vocoder=='griffin_lim'
+        assert hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
 
         if ncores==1:
             for i, mag in tqdm(enumerate(Z)):
