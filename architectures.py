@@ -150,9 +150,9 @@ class SSRNGraph(Graph):
         self.loss_mags = tf.reduce_mean(tf.abs(self.Z - self.mags))
 
         # mag binary divergence loss
-        if hp.squash_output_ssrn:
-            self.loss_bd2 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Z_logits, labels=self.mags))
-        else:    
+        
+        self.loss_bd2 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Z_logits, labels=self.mags))
+        if not self.hp.squash_output_ssrn:    
             self.loss_bd2 = 0.0
             print("binary divergence loss disabled because squash_output_ssrn==False")            
         # total loss
@@ -244,9 +244,9 @@ class Text2MelGraph(Graph):
         self.loss_mels = tf.reduce_mean(tf.abs(self.Y - self.mels))
 
         # mel binary divergence loss
-        if hp.squash_output_t2m:
-            self.loss_bd1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Y_logits, labels=self.mels))
-        else:    
+        
+        self.loss_bd1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Y_logits, labels=self.mels))
+        if not hp.squash_output_t2m::    
             self.loss_bd1 = 0.0
             print("binary divergence loss disabled because squash_output_t2m==False")    
 
