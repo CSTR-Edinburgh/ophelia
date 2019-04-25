@@ -246,7 +246,7 @@ class Text2MelGraph(Graph):
         # mel binary divergence loss
         
         self.loss_bd1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Y_logits, labels=self.mels))
-        if not hp.squash_output_t2m::    
+        if not hp.squash_output_t2m:   
             self.loss_bd1 = 0.0
             print("binary divergence loss disabled because squash_output_t2m==False")    
 
