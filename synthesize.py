@@ -362,13 +362,13 @@ def babble(hp, num_sentences=0):
             write(outdir + "/{:03d}.wav".format(i), hp.sr, wav)
 
 
-def world_synthesis(features, outfile, hp, vuv_thresh=0.7, logf0=True):
+def world_synthesis(features, outfile, hp, vuv_thresh=0.2, logf0=True):
 
     ## denorm:
     s = np.load(hp.feat_norm_file)
     mean = s[0,:].reshape(1,-1)   
     std = s[1,:].reshape(1,-1)
-    features = (features * std * 1.2) + mean
+    features = (features * std) + mean   ###  * 1.2
 
     ## split stream:
     streamdata = {}
@@ -388,9 +388,9 @@ def world_synthesis(features, outfile, hp, vuv_thresh=0.7, logf0=True):
     bap = np.minimum(streamdata['bap'], 0.0)
     mgc = streamdata['mgc']
 
-    put_speech(fz[:-1,:], outfile+'.f0')
-    put_speech(bap[:-1,:], outfile+'.ap')
-    put_speech(mgc[:-1,:], outfile+'.mgc')
+    put_speech(fz, outfile+'.f0')
+    put_speech(bap, outfile+'.ap')
+    put_speech(mgc, outfile+'.mgc')
 
     for stream in ['f0', 'ap']: # , 'mgc']:  
         #print ('doubles for ' + stream) 
