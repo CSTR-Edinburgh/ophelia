@@ -315,7 +315,10 @@ def AudioDec(hp, R, training=True, speaker_codes=None, reuse=None):
                     training=training,
                     scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
                     lcc=lcc, codes=speaker_codes); i += 1
-    Y = tf.nn.sigmoid(logits) # mel_hats
+    if hp.squash_output_t2m:
+        Y = tf.nn.sigmoid(logits) # mel_hats
+    else:
+        Y = logits
 
     return logits, Y
 
@@ -415,7 +418,10 @@ def SSRN(hp, Y, training=True, speaker_codes=None, reuse=None):
                dropout_rate=hp.dropout_rate,
                training=training,
                scope="C_{}".format(i), normtype=hp.norm, reuse=reuse)
-    Z = tf.nn.sigmoid(logits)
+    if hp.squash_output_ssrn:
+        Z = tf.nn.sigmoid(logits)
+    else:
+        Z = logits
     return logits, Z
 
 
