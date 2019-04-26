@@ -21,4 +21,4 @@ for line in fileinput.input(infile):
     line2 = '|'.join([name, t1, t2, phones, speaker, durs])
     print line2
     i += 1
-print i
+# print i
