@@ -1,4 +1,4 @@
-# dc_tts_osw
+# ophelia
 
 A modified version of Kyubyong Park's [dc_tts repository](https://github.com/Kyubyong/dc_tts), which implements a variant of the system described in [Efficiently Trainable Text-to-Speech System Based on Deep Convolutional Networks with Guided Attention](https://arxiv.org/abs/1710.08969). 
 
@@ -6,7 +6,6 @@ TODO: note differences between the paper and Kyubyong Park's implementation
 
 TODO: Note differences between this and Kyubyong Park's version
 
-TODO: choose a better name than dc_tts_osw ;-)
 
 
 ## Tools
