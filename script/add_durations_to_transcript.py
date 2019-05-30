@@ -33,14 +33,26 @@ def merlin_state_label_to_monophones(labfile):
     # return zip(starts, ends, mono)
     lengths = (ends - starts) / 10000 ## length in msec
     return (mono, lengths)
-        
+
+def plain_phone_label_to_monophones(labfile):
+    labels = np.loadtxt(labfile, dtype=str, comments=None) ## default comments='#' breaks
+    starts = labels[:,0].astype(int)
+    ends = labels[:,1].astype(int)
+    mono = labels[:,2]
+    lengths = (ends - starts) / 10000 ## length in msec
+    return (mono, lengths)
+
 def match_up(merlin_label_timings, dctts_label):
-    merlin_silence_symbols = ['pau', 'sil']
+    merlin_silence_symbols = ['pau', 'sil', 'skip']
     merlin_label, merlin_timings = merlin_label_timings
     output = []
     timings = []
     m = d = 0
+    # print '====='
+    # print merlin_label
+    # print dctts_label
     while m < len(merlin_label) and d < len(dctts_label):
+        # print (m,d)
         if merlin_label[m] in merlin_silence_symbols:
             assert dctts_label[d].startswith('<'), (dctts_label[d], merlin_label[m])
             timings.append(merlin_timings[m])
@@ -105,6 +117,8 @@ def main_work():
     a.add_argument('-ir', dest='inrate', type=float, default=5.0) 
     a.add_argument('-or', dest='outrate', type=float, default=12.5)   
 
+    a.add_argument('-plain', dest='plain_phone_label', action='store_true')
+
     opts = a.parse_args()
     
     # ===============================================
@@ -129,7 +143,10 @@ def main_work():
         if training:
             if labfile.stem not in featfiles:
                 continue
-        (mono, lengths) = merlin_state_label_to_monophones(labfile)
+        if opts.plain_phone_label:
+            (mono, lengths) = plain_phone_label_to_monophones(labfile)
+        else:
+            (mono, lengths) = merlin_state_label_to_monophones(labfile)
         label_msec_length = lengths.sum() 
 
         if training:
