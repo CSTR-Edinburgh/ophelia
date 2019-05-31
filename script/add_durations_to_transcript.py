@@ -79,7 +79,9 @@ def resample_timings(lengths, from_rate=5.0, to_rate=12.5, total_duration=0):
     Return converted sequence where values are divisible by to_rate.
     If total_duration, increase length of *last* item to match this total_duration.
     '''
-    assert (lengths % from_rate).all() == 0.0
+    remainder = lengths % from_rate
+    assert remainder.sum() == 0.0
+    # assert (lengths % from_rate). any() == 0.0
 
     ## find closest valid end given new sample rate
     ends = np.cumsum(lengths)
