@@ -33,14 +33,26 @@ def merlin_state_label_to_monophones(labfile):
     # return zip(starts, ends, mono)
     lengths = (ends - starts) / 10000 ## length in msec
     return (mono, lengths)
-        
+
+def plain_phone_label_to_monophones(labfile):
+    labels = np.loadtxt(labfile, dtype=str, comments=None) ## default comments='#' breaks
+    starts = labels[:,0].astype(int)
+    ends = labels[:,1].astype(int)
+    mono = labels[:,2]
+    lengths = (ends - starts) / 10000 ## length in msec
+    return (mono, lengths)
+
 def match_up(merlin_label_timings, dctts_label):
-    merlin_silence_symbols = ['pau', 'sil']
+    merlin_silence_symbols = ['pau', 'sil', 'skip']
     merlin_label, merlin_timings = merlin_label_timings
     output = []
     timings = []
     m = d = 0
+    # print '====='
+    # print merlin_label
+    # print dctts_label
     while m < len(merlin_label) and d < len(dctts_label):
+        # print (m,d)
         if merlin_label[m] in merlin_silence_symbols:
             assert dctts_label[d].startswith('<'), (dctts_label[d], merlin_label[m])
             timings.append(merlin_timings[m])
@@ -67,7 +79,9 @@ def resample_timings(lengths, from_rate=5.0, to_rate=12.5, total_duration=0):
     Return converted sequence where values are divisible by to_rate.
     If total_duration, increase length of *last* item to match this total_duration.
     '''
-    assert (lengths % from_rate).all() == 0.0
+    remainder = lengths % from_rate
+    assert remainder.sum() == 0.0
+    # assert (lengths % from_rate). any() == 0.0
 
     ## find closest valid end given new sample rate
     ends = np.cumsum(lengths)
@@ -82,7 +96,7 @@ def resample_timings(lengths, from_rate=5.0, to_rate=12.5, total_duration=0):
 
     if total_duration:
         diff = total_duration - in_new_rate.sum()
-        assert in_new_rate.sum() <= total_duration
+        assert in_new_rate.sum() <= total_duration, (in_new_rate.sum(), total_duration)
         assert diff % to_rate == 0.0
         in_new_rate[-1] += diff
 
@@ -100,7 +114,13 @@ def main_work():
     a.add_argument('-t', dest='transcript_file', required=True)    
     a.add_argument('-o', dest='outfile', required=True)
     a.add_argument('-l', dest='labdir', required=True)   
-    a.add_argument('-f', dest='featdir', required=False, default='')          
+    a.add_argument('-f', dest='featdir', required=False, default='')   
+
+    a.add_argument('-ir', dest='inrate', type=float, default=5.0) 
+    a.add_argument('-or', dest='outrate', type=float, default=12.5)   
+
+    a.add_argument('-plain', dest='plain_phone_label', action='store_true')
+
     opts = a.parse_args()
     
     # ===============================================
@@ -115,28 +135,33 @@ def main_work():
         training = False ## durations in labels are synthetic
     outfile = opts.outfile
 
-    for labfile in sorted(labdir.glob('*.lab')):
-        print labfile.stem
-        if labfile.stem not in transcript:
+    if sum([1 for i in labdir.glob('*.lab')]) == 0:
+        sys.exit('No label files in %s'%(opts.labdir))
+    
+    for labfile in tqdm(sorted(labdir.glob('*.lab'))):
+
+        if labfile.stem not in transcript:          
             continue
         if training:
             if labfile.stem not in featfiles:
                 continue
-        (mono, lengths) = merlin_state_label_to_monophones(labfile)
+        if opts.plain_phone_label:
+            (mono, lengths) = plain_phone_label_to_monophones(labfile)
+        else:
+            (mono, lengths) = merlin_state_label_to_monophones(labfile)
         label_msec_length = lengths.sum() 
 
         if training:
             features = np.load((featdir / labfile.stem).with_suffix('.npy'))
-            audio_msec_length = features.shape[0] * 12.5
-            resampled_lengths = resample_timings(lengths, from_rate=5.0, to_rate=12.5, total_duration=audio_msec_length)
+            audio_msec_length = features.shape[0] * opts.outrate
+            resampled_lengths = resample_timings(lengths, from_rate=opts.inrate, to_rate=opts.outrate, total_duration=audio_msec_length)
         else:
-            resampled_lengths = resample_timings(lengths, from_rate=5.0, to_rate=12.5)
-        resampled_lengths_in_frames = (resampled_lengths / 12.5).astype(int)
+            resampled_lengths = resample_timings(lengths, from_rate=opts.inrate, to_rate=opts.outrate)
+        resampled_lengths_in_frames = (resampled_lengths / opts.outrate).astype(int)
         
         timings = match_up((mono, resampled_lengths_in_frames), transcript[labfile.stem]['phones'])
         assert len(transcript[labfile.stem]['phones']) == len(timings), (len(transcript[labfile.stem]['phones']), len(timings), transcript[labfile.stem]['phones'], timings)
         transcript[labfile.stem]['duration'] = timings
-    
 
     write_transcript(transcript, outfile, duration=True)
 
@@ -175,6 +200,7 @@ def write_transcript(texts, transcript_file, duration=False):
             line += '||%s'%(dur)  ## leave empty speaker ID field 
         f.write(line + '\n')
     f.close()
+    print 'Wrote to ' + transcript_file
 
 
 

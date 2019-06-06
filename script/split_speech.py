@@ -42,15 +42,16 @@ def main_work():
     a.add_argument('-dB', dest='top_db', default=30, type=int) 
     a.add_argument('-trimonly', action='store_true', default=False)  
     a.add_argument('-ncores', type=int, default=0)   
+    a.add_argument('-endpad', type=float, default=0.3)
     opts = a.parse_args()
     
     # ===============================================
     
     trim_waves_in_directory(opts.wave_dir, opts.output_dir, num_workers=opts.ncores, \
-            tqdm=tqdm, nfiles=opts.nfiles, top_db=opts.top_db, trimonly=opts.trimonly)
+            tqdm=tqdm, nfiles=opts.nfiles, top_db=opts.top_db, trimonly=opts.trimonly, endpad=opts.endpad)
 
 def trim_waves_in_directory(in_dir, out_dir, num_workers=1, tqdm=lambda x: x, \
-                nfiles=0, top_db=30, trimonly=False):
+                nfiles=0, top_db=30, trimonly=False, endpad=0.3):
     safe_makedir(out_dir)
     wave_files = sorted(glob.glob(in_dir + '/*.wav'))
     if nfiles > 0:
@@ -61,11 +62,11 @@ def trim_waves_in_directory(in_dir, out_dir, num_workers=1, tqdm=lambda x: x, \
         futures = []
         for (index, wave_file) in enumerate(wave_files):
             futures.append(executor.submit(
-                partial(_process_utterance, wave_file, out_dir, top_db=top_db, trimonly=trimonly)))
+                partial(_process_utterance, wave_file, out_dir, top_db=top_db, trimonly=trimonly, end_pad_sec=endpad)))
         return [future.result() for future in tqdm(futures)]
     else:  ## serial processing
         for wave_file in tqdm(wave_files):
-            _process_utterance(wave_file, out_dir, top_db=top_db, trimonly=trimonly)        
+            _process_utterance(wave_file, out_dir, top_db=top_db, trimonly=trimonly, end_pad_sec=endpad)        
 
 
 

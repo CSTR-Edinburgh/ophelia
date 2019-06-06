@@ -381,12 +381,26 @@ def get_batch(hp, batchsize):
                 positions = end_pad_for_reduction_shape_sync(positions, hp)
                 positions = positions[random_start_position::hp.r, :]                   
                 return fname, mel, mag, duration_matrix, positions
+            def _load_merlin_positions():
+                fname = os.path.basename(fpath)
+                merlin_position_file = "{}/{}".format(hp.merlin_position_dir, fname.replace("wav", "npy"))
+                positions = np.load(merlin_position_file)
+                return positions
+            def _load_and_reduce_spectrograms_and_durations_and_merlin_positions(fpath, duration):
+                fname, mel, mag, duration_matrix, random_start_position = _load_and_reduce_spectrograms_and_durations(fpath, duration)
+                positions = _load_merlin_positions(fpath, hp)
+                positions = end_pad_for_reduction_shape_sync(positions, hp)
+                positions = positions[random_start_position::hp.r, :]                   
+                return fname, mel, mag, duration_matrix, positions
 
             if hp.use_external_durations:
                 if hp.history_type == 'fractional_position_in_phone':
                     fname, mel, mag, duration_matrix, position_in_phone = tf.py_func(_load_and_reduce_spectrograms_and_durations_and_fractional_positions, [fpath, duration], [tf.string, tf.float32, tf.float32, tf.float32, tf.float32])
                 elif hp.history_type == 'absolute_position_in_phone':
                     fname, mel, mag, duration_matrix, position_in_phone = tf.py_func(_load_and_reduce_spectrograms_and_durations_and_absolute_positions, [fpath, duration], [tf.string, tf.float32, tf.float32, tf.float32, tf.float32])
+                elif hp.history_type == 'merlin_position_from_file':
+                    sys.exit('hp.history_type == "merlin_position_from_file" needs to be debugged')
+                    fname, mel, mag, duration_matrix, position_in_phone = tf.py_func(_load_and_reduce_spectrograms_and_durations_and_merlin_positions, [fpath, duration], [tf.string, tf.float32, tf.float32, tf.float32, tf.float32])
                 else:
                     fname, mel, mag, duration_matrix, _ = tf.py_func(_load_and_reduce_spectrograms_and_durations, [fpath, duration], [tf.string, tf.float32, tf.float32, tf.float32, tf.int16])
             else:
@@ -453,7 +467,9 @@ def get_batch(hp, batchsize):
             duration_matrix.set_shape((None,None))  ## will be letters x frames
         if hp.attention_guide_dir:
             attention_guide.set_shape((None,None))  ## will be letters x frames
-        if 'position_in_phone' in hp.history_type:
+        if hp.history_type == 'merlin_position_from_file':
+            position_in_phone.set_shape((None, 9)) ## Always assume 9 positional features from merlin
+        elif 'position_in_phone' in hp.history_type:
             position_in_phone.set_shape((None, 1))  ## frames x 1D
         mel.set_shape((None, hp.n_mels))
         mag.set_shape((None, hp.full_dim))

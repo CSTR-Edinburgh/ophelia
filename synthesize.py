@@ -28,6 +28,10 @@ from libutil import safe_makedir, basename
 from configuration import load_config
 from concurrent.futures import ProcessPoolExecutor
 
+
+from libutil import put_speech
+
+
 def start_clock(comment):
     print ('%s... '%(comment)),
     return (timeit.default_timer(), comment)
@@ -160,6 +164,8 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None, duration_dat
     t_ends = np.ones(ends.shape, dtype=int) * hp.max_T  ## The frame index when endcounts is sufficiently high, which we'll consider the end of the utterance
                                                         ## NB: initialised to max_T -- will default to this.
 
+    if hp.use_external_durations:
+        t_ends = duration_data.sum(axis=(1,2))
 
     t = start_clock('gen')
     feeddict = {g.K: K, g.V: V, g.mels: Y, g.prev_max_attentions: prev_max_attentions}
@@ -202,17 +208,23 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None, duration_dat
         feeddict[g.prev_max_attentions] = prev_max_attentions
 
         ## Work out if we've reach end of any/all sentences in batch:-
-        reached_end = (_max_attentions[:, j] >= ends) ## is attention focussing on or beyond end of textual sentence?
-        endcounts += reached_end
-        for (i,(current, endcount)) in enumerate(zip(t_ends, endcounts)):
-            if current == hp.max_T: ## if hasn't changed from initialisation value
-                if endcount >= endcount_threshold:
-                    t_ends[i] = j
-        ## Bail out early if all sentences seem to be finished:
-        if (t_ends < hp.max_T).all():
-            print('finished here:')
-            print(t_ends)
-            break
+        if hp.use_external_durations:
+            if j>=t_ends.max():
+                print('finished here with fixed durations')
+                print(t_ends)
+                break
+        else:
+            reached_end = (_max_attentions[:, j] >= ends) ## is attention focussing on or beyond end of textual sentence?
+            endcounts += reached_end
+            for (i,(current, endcount)) in enumerate(zip(t_ends, endcounts)):
+                if current == hp.max_T: ## if hasn't changed from initialisation value
+                    if endcount >= endcount_threshold:
+                        t_ends[i] = j
+            ## Bail out early if all sentences seem to be finished:
+            if (t_ends < hp.max_T).all():
+                print('finished here with attention based alignment')
+                print(t_ends)
+                break
 
     return (Y, t_ends.tolist(), alignments)
 
@@ -302,6 +314,20 @@ def restore_latest_model_parameters(sess, hp, model_type):
     print("Model of type %s restored from latest epoch %s"%(model_type, latest_epoch))
     return latest_epoch
 
+## TODO: refactor to combine much of restore_archived_model_parameters and restore_latest_model_parameters(sess, hp, model_type):
+def restore_archived_model_parameters(sess, hp, model_type, epoch_number):
+    model_types = {  't2m': 'Text2Mel', 
+                    'ssrn': 'SSRN', 
+                    'babbler': 'Text2Mel'
+                  }  ## map model type to string used in scope
+    scope = model_types[model_type]
+    var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope)
+    saver = tf.train.Saver(var_list=var_list)
+    desired_checkpoint = hp.logdir + "-" + model_type + "/archive/model_epoch_" + str(epoch_number)
+    if not os.path.isfile(desired_checkpoint + '.index'): sys.exit('No %s at %s?'%(model_type, desired_checkpoint))
+    saver.restore(sess, desired_checkpoint)
+    print("Model of type %s restored from archived epoch %s"%(model_type, epoch_number))
+    
 
 def babble(hp, num_sentences=0):
 
@@ -336,15 +362,88 @@ def babble(hp, num_sentences=0):
             write(outdir + "/{:03d}.wav".format(i), hp.sr, wav)
 
 
+def world_synthesis(features, outfile, hp, vuv_thresh=0.2, logf0=True):
+
+    ## denorm:
+    s = np.load(hp.feat_norm_file)
+    mean = s[0,:].reshape(1,-1)   
+    std = s[1,:].reshape(1,-1)
+    features = (features * std) + mean   ###  * 1.2
+
+    ## split stream:
+    streamdata = {}
+    start = 0
+    streamlist = [('lf0', 1),('vuv', 1),('mgc', 60),('bap', 1)]
+    
+    for (stream, dim) in streamlist:
+        end = start + dim
+        streamdata[stream] = features[:, start:end]
+        start = end
+
+    ## handle F0:
+    fz = streamdata['lf0']
+    fz = np.exp(fz) 
+    fz[streamdata['vuv']<vuv_thresh] = 0.0
+  
+    bap = np.minimum(streamdata['bap'], 0.0)
+    mgc = streamdata['mgc']
+
+    put_speech(fz, outfile+'.f0')
+    put_speech(bap, outfile+'.ap')
+    put_speech(mgc, outfile+'.mgc')
+
+    for stream in ['f0', 'ap']: # , 'mgc']:  
+        #print ('doubles for ' + stream) 
+        comm=hp.sptk+"/x2x -o +fd "+outfile + "."+stream+" > " + outfile +".d"+stream 
+        # print(comm)
+        os.system(comm)
+
+    nFFTHalf = {16000: 1024, 22050: 1024, 44100: 2048, 48000: 2048}
+    alpha = {16000: 0.58, 22050: 0.65, 44100: 0.76, 48000: 0.77}
+
+    mcsize = 59
+    ## convert mgc -> sp with line from merlin script:
+    mgc2sp_cmd = "%s -a %f -g 0 -m %d -l %d -o 2 %s | %s -d 32768.0 -P | %s +fd -o > %s" % (os.path.join(hp.sptk, "mgc2sp"), 
+                                                                alpha[hp.sr], mcsize, nFFTHalf[hp.sr], \
+                                                                outfile+".mgc", \
+                                                                os.path.join(hp.sptk, "sopr"), \
+                                                                os.path.join(hp.sptk, "x2x"), \
+                                                                outfile+".sp")
+    # print(mgc2sp_cmd)
+    os.system(mgc2sp_cmd)    
+    '''Avoid:   x2x : error: input data is over the range of type 'double'!
+           -o      : clip by minimum and maximum of output data            
+             type if input data is over the range of               
+             output data type.
+    '''    
+
+
+
+    ## synth:
+    comm = '%s 1024 %s %s.df0 %s.sp %s.dap %s > %s.log'%(hp.world_synthesis_binary, hp.sr, outfile,outfile,outfile,outfile,outfile)
+    # print (comm)
+    os.system(comm)
+
+    ## clean up:
+    comm = 'rm %s.f0 %s.sp %s.ap %s.mgc %s.df0 %s.dap %s.log'%(outfile,outfile,outfile,outfile,outfile,outfile,outfile)
+    os.system(comm)
+    
+
 def synth_wave(hp, mag, outfile):
-    wav = spectrogram2wav(hp, mag)
-    #outfile = magfile.replace('.mag.npy', '.wav')
-    #outfile = outfile.replace('.npy', '.wav')
-    soundfile.write(outfile, wav, hp.sr)
+    if hp.vocoder == 'griffin_lim':
+        wav = spectrogram2wav(hp, mag)
+        #outfile = magfile.replace('.mag.npy', '.wav')
+        #outfile = outfile.replace('.npy', '.wav')
+        soundfile.write(outfile, wav, hp.sr)
+    elif hp.vocoder == 'world':
+        world_synthesis(mag, outfile, hp)
 
-
-def synthesize(hp, speaker_id='', num_sentences=0, ncores=1):
-    assert hp.vocoder=='griffin_lim', 'Other vocoders than griffin_lim not yet supported'
+def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_epoch=-1, ssrn_epoch=-1):
+    '''
+    topoutdir: store samples under here; defaults to hp.sampledir
+    t2m_epoch and ssrn_epoch: default -1 means use latest. Otherwise go to archived models.
+    '''
+    assert hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
 
     dataset = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
     fpaths, L = dataset['fpaths'], dataset['texts']
@@ -407,8 +506,15 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1):
         ### TODO: specify epoch from comm line?
         ### TODO: t2m and ssrn from separate configs?
 
-        t2m_epoch = restore_latest_model_parameters(sess, hp, 't2m')
-        ssrn_epoch = restore_latest_model_parameters(sess, hp, 'ssrn')
+        if t2m_epoch > -1:
+            restore_archived_model_parameters(sess, hp, 't2m', t2m_epoch)
+        else:
+            t2m_epoch = restore_latest_model_parameters(sess, hp, 't2m')
+
+        if ssrn_epoch > -1:    
+            restore_archived_model_parameters(sess, hp, 'ssrn', ssrn_epoch)
+        else:
+            ssrn_epoch = restore_latest_model_parameters(sess, hp, 'ssrn')
 
         # Pass input L through Text2Mel Graph
         t = start_clock('Text2Mel generating...')
@@ -431,7 +537,6 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1):
         # print(Y[0,:,:])
         # print (np.isnan(Y).any())
         # print('nan1')
-
         # Then pass output Y of Text2Mel Graph through SSRN graph to get high res spectrogram Z.
         t = start_clock('Mel2Mag generating...')
         Z = synth_mel2mag(hp, Y, g2, sess)
@@ -441,14 +546,16 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1):
             Z = np.nan_to_num(Z)
 
         # Generate wav files
-        outdir = os.path.join(hp.sampledir, 't2m%s_ssrn%s'%(t2m_epoch, ssrn_epoch))
+        if not topoutdir:
+            topoutdir = hp.sampledir
+        outdir = os.path.join(topoutdir, 't2m%s_ssrn%s'%(t2m_epoch, ssrn_epoch))
         if speaker_id:
             outdir += '_speaker-%s'%(speaker_id)
         safe_makedir(outdir)
         print("Generating wav files, will save to following dir: %s"%(outdir))
 
         
-        assert hp.vocoder=='griffin_lim'
+        assert hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
 
         if ncores==1:
             for i, mag in tqdm(enumerate(Z)):
@@ -498,12 +605,20 @@ def main_work():
     a.add_argument('-N', dest='num_sentences', default=0, type=int)
     a.add_argument('-babble', action='store_true')
     a.add_argument('-ncores', type=int, default=1, help='Number of CPUs for Griffin-Lim stage')
+    a.add_argument('-odir', type=str, default='', help='Alternative place to put output samples')
+
+    a.add_argument('-t2m_epoch', default=-1, type=int, help='Default: use latest (-1)')
+    a.add_argument('-ssrn_epoch', default=-1, type=int, help='Default: use latest (-1)')
     
     opts = a.parse_args()
     
     # ===============================================
     hp = load_config(opts.config)
     
+    outdir = opts.odir
+    if outdir:
+        outdir = os.path.join(outdir, basename(opts.config))
+
     if hp.multispeaker:
         assert opts.speaker, 'Please specify a speaker from speaker_list with -speaker flag'
         assert opts.speaker in hp.speaker_list
@@ -511,7 +626,8 @@ def main_work():
     if opts.babble:
         babble(hp, num_sentences=opts.num_sentences)
     else:
-        synthesize(hp, speaker_id=opts.speaker, num_sentences=opts.num_sentences, ncores=opts.ncores)
+        synthesize(hp, speaker_id=opts.speaker, num_sentences=opts.num_sentences, \
+                ncores=opts.ncores, topoutdir=outdir, t2m_epoch=opts.t2m_epoch, ssrn_epoch=opts.ssrn_epoch)
 
 
 if __name__=="__main__":

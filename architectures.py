@@ -5,7 +5,7 @@ Based on code by kyubyong park at https://www.github.com/kyubyong/dc_tts
 '''
 
 from data_load import get_batch, load_vocab
-from networks import TextEnc, AudioEnc, AudioDec, Attention, SSRN, FixedAttention
+from networks import TextEnc, AudioEnc, AudioDec, Attention, SSRN, FixedAttention, LinearTransformLabels
 import tensorflow as tf
 from utils import get_global_attention_guide, learning_rate_decay
 
@@ -34,6 +34,7 @@ class Graph(object):
         ## mels: Reduced melspectrogram. (B, T/r, n_mels) float32
         ## mags: Magnitude. (B, T, n_fft//2+1) float32
         hp = self.hp
+
         if self.mode is 'train':
             batchdict = get_batch(hp, self.get_batchsize())
 
@@ -101,10 +102,13 @@ class Graph(object):
 
         hp = self.hp
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
-        self.lr = learning_rate_decay(hp.lr, self.global_step)
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.lr)
-        tf.summary.scalar("lr", self.lr)
+        if hp.decay_lr:
+            self.lr = learning_rate_decay(hp.lr, self.global_step)
+        else:
+            self.lr = hp.lr
 
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=hp.beta1, beta2=hp.beta2, epsilon=hp.epsilon)
+        tf.summary.scalar("lr", self.lr)
         
         if self.hp.update_weights:
             train_variables = filter_variables_for_update(self.hp.update_weights)
@@ -138,19 +142,35 @@ class SSRNGraph(Graph):
             self.Z_logits, self.Z = SSRN(self.hp, self.mels, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)
 
     def build_loss(self):
+
+        ## L2 loss (new)
+        self.loss_l2 = tf.reduce_mean(tf.squared_difference(self.Z, self.mags))
+
         # mag L1 loss
         self.loss_mags = tf.reduce_mean(tf.abs(self.Z - self.mags))
 
         # mag binary divergence loss
+        
         self.loss_bd2 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Z_logits, labels=self.mags))
-
+        if not self.hp.squash_output_ssrn:    
+            self.loss_bd2 = tf.zeros_like(self.loss_bd2)
+            print("binary divergence loss disabled because squash_output_ssrn==False")            
         # total loss
-        self.lw_mag = self.hp.lw_mag
-        self.lw_bd2 = self.hp.lw_bd2                    
-        self.loss = (self.lw_mag * self.loss_mags) + (self.lw_bd2 * self.loss_bd2)
+        try:  ## new way to configure loss weights:- TODO: ensure all configs use new pattern, and remove 'except' branch
+            # total loss, with 2 terms combined with loss weights:
+            self.loss = (self.hp.loss_weights['ssrn']['L1'] * self.loss_mags) + \
+                        (self.hp.loss_weights['ssrn']['binary_divergence'] * self.loss_bd2) +\
+                        (self.hp.loss_weights['ssrn']['L2'] * self.loss_l2)
+            print("New loss weight format used!")
+
+        except:
+            self.lw_mag = self.hp.lw_mag
+            self.lw_bd2 = self.hp.lw_bd2       
+            self.lw_ssrn_l2 = self.hp.lw_ssrn_l2                    
+            self.loss = (self.lw_mag * self.loss_mags) + (self.lw_bd2 * self.loss_bd2) + (self.lw_ssrn_l2 * self.loss_l2)
 
         # loss_components attribute is used for reporting to log (osw)
-        self.loss_components = [self.loss, self.loss_mags, self.loss_bd2]
+        self.loss_components = [self.loss, self.loss_mags, self.loss_bd2, self.loss_l2]
 
         # summary used for reporting to tensorboard (kp)
         tf.summary.scalar('train/loss_mags', self.loss_mags)
@@ -176,7 +196,8 @@ class Text2MelGraph(Graph):
                 self.K = self.V = self.merlin_label
             elif self.hp.text_encoder_type=='minimal_feedforward':
                 assert self.hp.merlin_label_dir
-                sys.exit('Not implemented: hp.text_encoder_type=="minimal_feedforward"')
+                #sys.exit('Not implemented: hp.text_encoder_type=="minimal_feedforward"')
+                self.K = self.V = LinearTransformLabels(self.hp, self.merlin_label, training=self.training, reuse=self.reuse)
             else: ## default DCTTS text encoder
                 with tf.variable_scope("TextEnc"):
                     self.K, self.V = TextEnc(self.hp, self.L, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)  # (N, Tx, e)
@@ -215,12 +236,21 @@ class Text2MelGraph(Graph):
 
     def build_loss(self):
         hp = self.hp
+
+        ## L2 loss (new)
+        self.loss_l2 = tf.reduce_mean(tf.squared_difference(self.Y, self.mels))
+
         # mel L1 loss
         self.loss_mels = tf.reduce_mean(tf.abs(self.Y - self.mels))
 
         # mel binary divergence loss
+        
         self.loss_bd1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Y_logits, labels=self.mels))
+        if not hp.squash_output_t2m:   
+            self.loss_bd1 = tf.zeros_like(self.loss_bd1)
+            print("binary divergence loss disabled because squash_output_t2m==False")    
 
+        
         # guided_attention loss
         self.A = tf.pad(self.alignments, [(0, 0), (0, hp.max_N), (0, hp.max_T)], mode="CONSTANT", constant_values=-1.)[:, :hp.max_N, :hp.max_T]
         if hp.attention_guide_dir:
@@ -231,16 +261,23 @@ class Text2MelGraph(Graph):
         self.loss_att /= self.mask_sum
 
         # total loss
+        try:  ## new way to configure loss weights:- TODO: ensure all configs use new pattern, and remove 'except' branch
+            # total loss, with 2 terms combined with loss weights:
+            self.loss = (hp.loss_weights['t2m']['L1'] * self.loss_mels) + \
+                        (hp.loss_weights['t2m']['binary_divergence'] * self.loss_bd1) +\
+                        (hp.loss_weights['t2m']['attention'] * self.loss_att) +\
+                        (hp.loss_weights['t2m']['L2'] * self.loss_l2)
 
-        ## loss weights
-        self.lw_mel = hp.lw_mel
-        self.lw_bd1 = hp.lw_bd1
-        self.lw_att = hp.lw_att                                            
-        
-        self.loss = (self.lw_mel * self.loss_mels) + (self.lw_bd1 * self.loss_bd1) + (self.lw_att * self.loss_att)
+        except:
+            self.lw_mel = hp.lw_mel
+            self.lw_bd1 = hp.lw_bd1
+            self.lw_att = hp.lw_att     
+            self.lw_t2m_l2 = self.hp.lw_t2m_l2                    
+            self.loss = (self.lw_mel * self.loss_mels) + (self.lw_bd1 * self.loss_bd1) + (self.lw_att * self.loss_att) + (self.lw_t2m_l2 * self.loss_l2)
 
         # loss_components attribute is used for reporting to log (osw)
-        self.loss_components = [self.loss, self.loss_mels, self.loss_bd1, self.loss_att]
+        self.loss_components = [self.loss, self.loss_mels, self.loss_bd1, self.loss_att, self.loss_l2]
+
 
         # summary used for reporting to tensorboard (kp)
         tf.summary.scalar('train/loss_mels', self.loss_mels)

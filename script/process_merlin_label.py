@@ -74,6 +74,8 @@ def main_work():
     a.add_argument('-n', dest='norm_info_fname', required=True)  
     a.add_argument('-o', dest='outdir', required=True) 
     a.add_argument('-binext', dest='binext', required=False, default='lab')    
+    a.add_argument('-skipterminals', action='store_true', default=False)    
+
 
     opts = a.parse_args()
     
@@ -95,6 +97,8 @@ def main_work():
             continue
         print base
         lab = process_merlin_label(binlab, opts.text_lab_dir)
+        if opts.skipterminals:
+            lab = lab[1:-1,:] ## NB: dont remove 2 last as in durations, as the final punct does't features here
         norm_lab = minmax_norm(lab, data_min, data_max)
 
         if 0: ## piano roll style plot:

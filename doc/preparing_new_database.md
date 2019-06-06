@@ -2,7 +2,7 @@
 
 ## Preparing a new database
 
-This describes how the features at `/group/project/cstr2/owatts/data/LJSpeech-1.1/` were made and will be useful for preparing new databases. To prepare the phonetic transcription from text, Festival's front-end was used: see notes on [installing Festival](./doc/festival_install.md).
+This describes how the features at `/group/project/cstr2/owatts/data/LJSpeech-1.1/` were made and will be useful for preparing new databases. To prepare the phonetic transcription from text, Festival's front-end was used: see notes on [installing Festival](./festival_install.md).
 
 
 ### Download LJSpeech
