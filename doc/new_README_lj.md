@@ -183,20 +183,18 @@ du -sh work/lj_test/data/*
 ```
 
 
-## The config file: get length of inputs and outputs
+## The config file: get length of N and T
 
 
-
-
-Finally, obtain the set of phones in your transcription by:
+We need to provide to the config file the maximum length of the phone transcriptions and the coarse mels (the inputs and outputs to the T2M model).
 
 ```
 cd $CODEDIR
-python ./script/check_transcript.py -i $DATADIR/transcript.csv -phone
+python $CODEDIR/script/check_transcript.py -i $DATADIR/transcript.csv -phone -cmp $CODEDIR/work/lj_tutorial/data/mels
 
 ```
 
-The output of running this script is the phone set used in the transcription and other useful information, like a histogram of sentence length in phones. Copy over two things, the observed phones and the "phone length max".
+The output should look like this. The script is giving information about the length of the sequences, the phone set in the transcriptions, and a histogram of the lenghts. In the config file, you can use the maximum length, or you can choose a different cutting point, for example, if you only have one sentence at that max length but most of your data is below that range.
 
 ```
 ------------------
@@ -211,19 +209,27 @@ Letter/phone length max:
 
 ```
 
-We will add these to the config file.
+We will add these to the config file. You can see in there in `vocab` there is the list of phones. Change the max_N and max_T to the values given by the script.
 
+
+```
+# In the config file
+max_N = 150 # Maximum number of characters/phones
+max_T = 300 # Maximum number of mel frames
+
+```
 
 
 ### Make per-utterance attention guides
 
-Configuring:
+The configuration file allows for two options for guided attention. If you leave an empty string for the variable `attention_guide_dir`, global attention matrix will be used, of size `(max_N, max_T)`. Otherwise, if there is a path given, then attention guides per utterance length will be constructed.
 
 ```
+# In the config file
 attention_guide_dir = ''
 ```
 
-... would use a single global attention guide as in Park's original code, of size `(max_N, max_T)`. This might be bad if there is much difference in rate between sentences, as would be the case in multispeaker databases. Use this command to prepare per-utterance guides with a config such as `ls_test.cfg` where `attention_guide_dir` points to a directory path (non-empty string):
+Otherwise, if there is a path given, then attention guides per utterance length will be constructed. Run:
 
 ```
 ./util/submit_tf.sh ./prepare_attention_guides.py -c ./config/lj_test.cfg -ncores 25
