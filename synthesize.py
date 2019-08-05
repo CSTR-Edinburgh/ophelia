@@ -8,7 +8,7 @@ from __future__ import print_function
 
 import os
 import sys
-import timeit 
+import timeit
 from argparse import ArgumentParser
 
 import numpy as np
@@ -21,7 +21,7 @@ from tqdm import tqdm
 
 from utils import plot_alignment
 from utils import spectrogram2wav, durations_to_position
-from utils import split_streams, magphase_synth_from_compressed 
+from utils import split_streams, magphase_synth_from_compressed
 from data_load import load_data
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
 from libutil import safe_makedir, basename
@@ -43,12 +43,12 @@ def stop_clock((start_time, comment), width=40):
 def denorm(data, stats, type):
     if type=='minmax':
         mini = stats[0,:].reshape(1,-1)
-        maxi = stats[1,:].reshape(1,-1)  
-        X = data   
+        maxi = stats[1,:].reshape(1,-1)
+        X = data
         # http://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.MinMaxScaler.html
         X_std = (X - X.min(axis=0)) / (X.max(axis=0) - X.min(axis=0))
-        X_scaled = X_std * (maxi - mini) + mini   
-        return X_scaled        
+        X_scaled = X_std * (maxi - mini) + mini
+        return X_scaled
     elif type=='meanvar':
         mean = stats[0,:].reshape(1,-1)
         std = stats[1,:].reshape(1,-1)
@@ -81,18 +81,18 @@ def synth_text2mel(hp, L, g, sess, speaker_data=None, duration_data=None, \
     t = start_clock('gen')
     feeddict = {g.L: L, g.mels: Y, g.prev_max_attentions: prev_max_attentions}
     if hp.multispeaker:
-        feeddict[g.speakers] = speaker_data   
+        feeddict[g.speakers] = speaker_data
     if hp.use_external_durations:
-        feeddict[g.durations] = duration_data  
+        feeddict[g.durations] = duration_data
     if hp.merlin_label_dir:
-        feeddict[g.merlin_label] = labels  
+        feeddict[g.merlin_label] = labels
     if 'position_in_phone' in hp.history_type:
         feeddict[g.position_in_phone] = position_in_phone_data
 
 
     for j in tqdm(range(hp.max_T)): # always run for max num of mel-frames
         _Y, _max_attentions, _alignments, = \
-                    sess.run([ g.Y, g.max_attentions, g.alignments], feeddict)                                    
+                    sess.run([ g.Y, g.max_attentions, g.alignments], feeddict)
 
         #### OLDER VERSION (TODO - prune):
         # if hp.multispeaker:
@@ -134,15 +134,15 @@ def synth_babble(hp, g, sess, seed=False, nsamples=16):
     '''
     g: synthesis graph
     sess: Session
-    TODO: always use random starting condition? Otherwise all samples are identical 
+    TODO: always use random starting condition? Otherwise all samples are identical
     '''
-    assert not seed, 'TODO: implement seeding babbler'  
+    assert not seed, 'TODO: implement seeding babbler'
 
     Y = np.zeros((nsamples, hp.max_T, hp.n_mels), np.float32)
-    
+
     t = start_clock('babbling')
     for j in tqdm(range(hp.max_T)):
-        _Y, = sess.run([ g.Y], {g.mels: Y}) 
+        _Y, = sess.run([ g.Y], {g.mels: Y})
         Y[:, j, :] = _Y[:, j, :]
     return Y
 
@@ -170,16 +170,16 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None, duration_dat
     t = start_clock('gen')
     feeddict = {g.K: K, g.V: V, g.mels: Y, g.prev_max_attentions: prev_max_attentions}
     if hp.multispeaker:
-        feeddict[g.speakers] = speaker_data  
+        feeddict[g.speakers] = speaker_data
     if hp.use_external_durations:
-        feeddict[g.durations] = duration_data    
+        feeddict[g.durations] = duration_data
     if hp.merlin_label_dir:
-        feeddict[g.merlin_label] = labels      
+        feeddict[g.merlin_label] = labels
     if 'position_in_phone' in hp.history_type:
-        feeddict[g.position_in_phone] = position_in_phone_data             
+        feeddict[g.position_in_phone] = position_in_phone_data
     for j in tqdm(range(hp.max_T)):  # always run for max num of mel-frames
         _Y, _max_attentions, _alignments, = \
-                    sess.run([ g.Y, g.max_attentions, g.alignments], feeddict)                                    
+                    sess.run([ g.Y, g.max_attentions, g.alignments], feeddict)
 
         #### OLDER VERSION (TODO - prune):--
         # if hp.multispeaker:
@@ -228,13 +228,13 @@ def synth_codedtext2mel(hp, K, V, ends, g, sess, speaker_data=None, duration_dat
 
     return (Y, t_ends.tolist(), alignments)
 
-def encode_text(hp, L, g, sess, speaker_data=None, labels=None):  
+def encode_text(hp, L, g, sess, speaker_data=None, labels=None):
 
     feeddict = {g.L: L}
     if hp.multispeaker:
-        feeddict[g.speakers] = speaker_data   
+        feeddict[g.speakers] = speaker_data
     if hp.merlin_label_dir:
-        feeddict[g.merlin_label] = labels  
+        feeddict[g.merlin_label] = labels
     K, V = sess.run([ g.K, g.V], feeddict)
     return (K, V)
 
@@ -242,13 +242,13 @@ def get_text_lengths(L):
     ends = []  ## indices of first padding character after the last letter
     for i in range(len(L)):
         ends.append((np.where(L[i,:]==0)[0][0]))   ## TODO: have to go back to L to work this out?
-    ends = np.array(ends)    
+    ends = np.array(ends)
     return ends
 
 
 def synth_mel2mag(hp, Y, g, sess, batchsize=128):
     #assert speaker_data==None  ## TODO: remove, or might speaker-condition SSRN at some point?
-    
+
     if batchsize > 0:
         nbatches = max(1, len(Y) / batchsize)
         batches = np.array_split(Y, nbatches)
@@ -274,7 +274,7 @@ def make_mel_batch(hp, fnames, oracle=True): ## TODO: refactor with list2batch ?
         mels = [os.path.join(hp.coarse_audio_dir, base + '.npy') for base in bases]
     else:
         mels = fnames
-    mels = [np.load(melfile) for melfile in mels] 
+    mels = [np.load(melfile) for melfile in mels]
     mel_batch = np.zeros((len(mels), hp.max_T, hp.n_mels), np.float32)
     for (i,mel) in enumerate(mels):
         length,n = mel.shape
@@ -285,7 +285,7 @@ def make_mel_batch(hp, fnames, oracle=True): ## TODO: refactor with list2batch ?
 def list2batch(inlist, pad_length):
     lengths = []
     m,dim = inlist[0].shape
-    
+
     if pad_length==0:
         pad_length = max([a.shape[0] for a in inlist])
 
@@ -299,8 +299,8 @@ def list2batch(inlist, pad_length):
 
 
 def restore_latest_model_parameters(sess, hp, model_type):
-    model_types = {  't2m': 'Text2Mel', 
-                    'ssrn': 'SSRN', 
+    model_types = {  't2m': 'Text2Mel',
+                    'ssrn': 'SSRN',
                     'babbler': 'Text2Mel'
                   }  ## map model type to string used in scope
     scope = model_types[model_type]
@@ -316,8 +316,8 @@ def restore_latest_model_parameters(sess, hp, model_type):
 
 ## TODO: refactor to combine much of restore_archived_model_parameters and restore_latest_model_parameters(sess, hp, model_type):
 def restore_archived_model_parameters(sess, hp, model_type, epoch_number):
-    model_types = {  't2m': 'Text2Mel', 
-                    'ssrn': 'SSRN', 
+    model_types = {  't2m': 'Text2Mel',
+                    'ssrn': 'SSRN',
                     'babbler': 'Text2Mel'
                   }  ## map model type to string used in scope
     scope = model_types[model_type]
@@ -327,7 +327,7 @@ def restore_archived_model_parameters(sess, hp, model_type, epoch_number):
     if not os.path.isfile(desired_checkpoint + '.index'): sys.exit('No %s at %s?'%(model_type, desired_checkpoint))
     saver.restore(sess, desired_checkpoint)
     print("Model of type %s restored from archived epoch %s"%(model_type, epoch_number))
-    
+
 
 def babble(hp, num_sentences=0):
 
@@ -348,7 +348,7 @@ def babble(hp, num_sentences=0):
 
         t = start_clock('Mel2Mag generating...')
         Z = synth_mel2mag(hp, Y, g2, sess)
-        stop_clock(t) 
+        stop_clock(t)
 
         if (np.isnan(Z).any()):  ### TODO: keep?
             Z = np.nan_to_num(Z)
@@ -366,7 +366,7 @@ def world_synthesis(features, outfile, hp, vuv_thresh=0.2, logf0=True):
 
     ## denorm:
     s = np.load(hp.feat_norm_file)
-    mean = s[0,:].reshape(1,-1)   
+    mean = s[0,:].reshape(1,-1)
     std = s[1,:].reshape(1,-1)
     features = (features * std) + mean   ###  * 1.2
 
@@ -374,7 +374,7 @@ def world_synthesis(features, outfile, hp, vuv_thresh=0.2, logf0=True):
     streamdata = {}
     start = 0
     streamlist = [('lf0', 1),('vuv', 1),('mgc', 60),('bap', 1)]
-    
+
     for (stream, dim) in streamlist:
         end = start + dim
         streamdata[stream] = features[:, start:end]
@@ -382,9 +382,9 @@ def world_synthesis(features, outfile, hp, vuv_thresh=0.2, logf0=True):
 
     ## handle F0:
     fz = streamdata['lf0']
-    fz = np.exp(fz) 
+    fz = np.exp(fz)
     fz[streamdata['vuv']<vuv_thresh] = 0.0
-  
+
     bap = np.minimum(streamdata['bap'], 0.0)
     mgc = streamdata['mgc']
 
@@ -392,9 +392,9 @@ def world_synthesis(features, outfile, hp, vuv_thresh=0.2, logf0=True):
     put_speech(bap, outfile+'.ap')
     put_speech(mgc, outfile+'.mgc')
 
-    for stream in ['f0', 'ap']: # , 'mgc']:  
-        #print ('doubles for ' + stream) 
-        comm=hp.sptk+"/x2x -o +fd "+outfile + "."+stream+" > " + outfile +".d"+stream 
+    for stream in ['f0', 'ap']: # , 'mgc']:
+        #print ('doubles for ' + stream)
+        comm=hp.sptk+"/x2x -o +fd "+outfile + "."+stream+" > " + outfile +".d"+stream
         # print(comm)
         os.system(comm)
 
@@ -403,19 +403,19 @@ def world_synthesis(features, outfile, hp, vuv_thresh=0.2, logf0=True):
 
     mcsize = 59
     ## convert mgc -> sp with line from merlin script:
-    mgc2sp_cmd = "%s -a %f -g 0 -m %d -l %d -o 2 %s | %s -d 32768.0 -P | %s +fd -o > %s" % (os.path.join(hp.sptk, "mgc2sp"), 
+    mgc2sp_cmd = "%s -a %f -g 0 -m %d -l %d -o 2 %s | %s -d 32768.0 -P | %s +fd -o > %s" % (os.path.join(hp.sptk, "mgc2sp"),
                                                                 alpha[hp.sr], mcsize, nFFTHalf[hp.sr], \
                                                                 outfile+".mgc", \
                                                                 os.path.join(hp.sptk, "sopr"), \
                                                                 os.path.join(hp.sptk, "x2x"), \
                                                                 outfile+".sp")
     # print(mgc2sp_cmd)
-    os.system(mgc2sp_cmd)    
+    os.system(mgc2sp_cmd)
     '''Avoid:   x2x : error: input data is over the range of type 'double'!
-           -o      : clip by minimum and maximum of output data            
-             type if input data is over the range of               
+           -o      : clip by minimum and maximum of output data
+             type if input data is over the range of
              output data type.
-    '''    
+    '''
 
 
 
@@ -427,7 +427,7 @@ def world_synthesis(features, outfile, hp, vuv_thresh=0.2, logf0=True):
     ## clean up:
     comm = 'rm %s.f0 %s.sp %s.ap %s.mgc %s.df0 %s.dap %s.log'%(outfile,outfile,outfile,outfile,outfile,outfile,outfile)
     os.system(comm)
-    
+
 
 def synth_wave(hp, mag, outfile):
     if hp.vocoder == 'griffin_lim':
@@ -455,26 +455,26 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
 
     if 'position_in_phone' in hp.history_type:
         ## TODO: combine + deduplicate with relevant code in train.py for making validation set
-        def duration2position(duration, fractional=False):     
+        def duration2position(duration, fractional=False):
             ### very roundabout -- need to deflate A matrix back to integers:
             duration = duration.sum(axis=0)
             #print(duration)
-            # sys.exit('evs')   
+            # sys.exit('evs')
             positions = durations_to_position(duration, fractional=fractional)
             ###positions = end_pad_for_reduction_shape_sync(positions, hp)
-            positions = positions[0::hp.r, :]         
+            positions = positions[0::hp.r, :]
             #print(positions)
             return positions
 
         position_in_phone_data = [duration2position(dur, fractional=('fractional' in hp.history_type)) \
-                        for dur in duration_data]       
+                        for dur in duration_data]
         position_in_phone_data = list2batch(position_in_phone_data, hp.max_T)
 
 
 
     # Ensure we aren't trying to generate more utterances than are actually in our test_transcript
     if num_sentences > 0:
-        assert num_sentences < len(fpaths)
+        assert num_sentences < len(fpaths) or num_sentences == len(fpaths)
         L = L[:num_sentences, :]
         fpaths = fpaths[:num_sentences]
 
@@ -495,7 +495,7 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
     else:
         speaker_data = None
 
-    # Load graph 
+    # Load graph
     ## TODO: generalise to combine other types of models into a synthesis pipeline?
     g1 = Text2MelGraph(hp, mode="synthesize"); print("Graph 1 (t2m) loaded")
     g2 = SSRNGraph(hp, mode="synthesize"); print("Graph 2 (ssrn) loaded")
@@ -511,7 +511,7 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
         else:
             t2m_epoch = restore_latest_model_parameters(sess, hp, 't2m')
 
-        if ssrn_epoch > -1:    
+        if ssrn_epoch > -1:
             restore_archived_model_parameters(sess, hp, 'ssrn', ssrn_epoch)
         else:
             ssrn_epoch = restore_latest_model_parameters(sess, hp, 'ssrn')
@@ -540,7 +540,7 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
         # Then pass output Y of Text2Mel Graph through SSRN graph to get high res spectrogram Z.
         t = start_clock('Mel2Mag generating...')
         Z = synth_mel2mag(hp, Y, g2, sess)
-        stop_clock(t) 
+        stop_clock(t)
 
         if (np.isnan(Z).any()):  ### TODO: keep?
             Z = np.nan_to_num(Z)
@@ -554,7 +554,7 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
         safe_makedir(outdir)
         print("Generating wav files, will save to following dir: %s"%(outdir))
 
-        
+
         assert hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
 
         if ncores==1:
@@ -563,7 +563,7 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
                 mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length
                 synth_wave(hp, mag, outfile)
         else:
-            executor = ProcessPoolExecutor(max_workers=ncores)    
+            executor = ProcessPoolExecutor(max_workers=ncores)
             futures = []
             for i, mag in tqdm(enumerate(Z)):
                 outfile = os.path.join(outdir, bases[i] + '.wav')
@@ -574,21 +574,21 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
         # for i, mag in enumerate(Z):
         #     print("Working on %s"%(bases[i]))
         #     mag = mag[:lengths[i]*hp.r,:]  ### trim to generated length
-            
+
         #     if hp.vocoder=='magphase_compressed':
         #         mag = denorm(mag, s, hp.normtype)
         #         streams = split_streams(mag, ['mag', 'lf0', 'vuv', 'real', 'imag'], [60,1,1,45,45])
         #         wav = magphase_synth_from_compressed(streams, samplerate=hp.sr)
-        #     elif hp.vocoder=='griffin_lim':                
+        #     elif hp.vocoder=='griffin_lim':
         #         wav = spectrogram2wav(hp, mag)
         #     else:
         #         sys.exit('Unsupported vocoder type: %s'%(hp.vocoder))
         #     #write(outdir + "/{}.wav".format(bases[i]), hp.sr, wav)
         #     soundfile.write(outdir + "/{}.wav".format(bases[i]), wav, hp.sr)
-            
 
-            
-        # Plot attention alignments 
+
+
+        # Plot attention alignments
         for i in range(num_sentences):
             plot_alignment(hp, alignments[i], utt_idx=i+1, t2m_epoch=t2m_epoch, dir=outdir)
 
@@ -596,7 +596,7 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
 def main_work():
 
     #################################################
-      
+
     # ============= Process command line ============
 
     a = ArgumentParser()
@@ -609,12 +609,12 @@ def main_work():
 
     a.add_argument('-t2m_epoch', default=-1, type=int, help='Default: use latest (-1)')
     a.add_argument('-ssrn_epoch', default=-1, type=int, help='Default: use latest (-1)')
-    
+
     opts = a.parse_args()
-    
+
     # ===============================================
     hp = load_config(opts.config)
-    
+
     outdir = opts.odir
     if outdir:
         outdir = os.path.join(outdir, basename(opts.config))
