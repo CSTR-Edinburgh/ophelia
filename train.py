@@ -31,14 +31,17 @@ from logging import info
 
 from tqdm import tqdm
 
-
+### added by me
+import librosa
+import matplotlib
+matplotlib.use('pdf')
+import matplotlib.pyplot as plt
 
 def compute_validation(hp, model_type, epoch, inputs, synth_graph, sess, speaker_codes, \
          valid_filenames, validation_set_reference, duration_data=None, validation_labels=None, position_in_phone_data=None):
     if model_type == 't2m': ## TODO: coded_text2mel here
         validation_set_predictions_tensor, lengths = synth_text2mel(hp, inputs, synth_graph, sess, speaker_data=speaker_codes, duration_data=duration_data, labels=validation_labels, position_in_phone_data=position_in_phone_data)
         validation_set_predictions = split_batch(validation_set_predictions_tensor, lengths)
-        print (validation_set_predictions)
         score = compute_dtw_error(validation_set_reference, validation_set_predictions)
     elif model_type == 'ssrn':
         validation_set_predictions_tensor = synth_mel2mag(hp, inputs, synth_graph, sess)
@@ -154,7 +157,9 @@ def main_work():
 
 
     elif model_type=='ssrn':
+        print ('validation files', valid_filenames)
         validation_inputs, validation_lengths = make_mel_batch(hp, valid_filenames)
+
         validation_reference = validation_mags
     else:
         info('Undefined model_type {} for making validation inputs -- supply dummy None values'.format(model_type))
