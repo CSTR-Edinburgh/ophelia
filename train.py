@@ -47,23 +47,6 @@ def compute_validation(hp, model_type, epoch, inputs, synth_graph, sess, speaker
         validation_set_predictions_tensor = synth_mel2mag(hp, inputs, synth_graph, sess)
         lengths = [len(ref) for ref in validation_set_reference]
         validation_set_predictions = split_batch(validation_set_predictions_tensor, lengths)
-        f0_list = []
-        for element in validation_set_predictions:
-            mag = element
-            # transpose
-            #mag = mag.T
-            # de-normalize
-            #mag = (np.clip(mag, 0, 1) * hp.max_db) - hp.max_db + hp.ref_db
-
-            pitches, magnitudes = librosa.piptrack(S=mag, sr=22050, fmin=25, fmax=400)
-            for t in range(0, len(pitches)):
-                index = magnitudes[:, t].argmax()
-                pitch = pitches[index, t]
-                f0_list.append(pitch)
-        plt.clf()
-        plt.plot(f0_list)
-        plt.savefig('f0_'+str(epoch)+'.png')
-
         score = compute_simple_LSD(validation_set_reference, validation_set_predictions)
     else:
         info('compute_validation cannot handle model type %s: dummy value (0.0) supplied as validation score'%(model_type)); return 0.0
