@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #!/usr/bin/env python2
 '''
-Adapted from original code by kyubyong park. kbpark.linguist@gmail.com. 
+Adapted from original code by kyubyong park. kbpark.linguist@gmail.com.
 https://www.github.com/kyubyong/dc_tts
 '''
 
@@ -12,7 +12,7 @@ import re
 import os
 import glob
 import unicodedata
-import logging 
+import logging
 
 import numpy as np
 import tensorflow as tf
@@ -41,15 +41,15 @@ def text_normalize(text, hp):
                            if unicodedata.category(char) != 'Mn') # Strip accents
 
     text = text.lower()
-    text = re.sub("[^{}]".format(hp.vocab), " ", text)
-    text = re.sub("[ ]+", " ", text)
+    text = re.sub(u"[^{}]".format(hp.vocab), u" ", text)
+    text = re.sub(u"[ ]+", u" ", text)
     return text
 
 def phones_normalize(text, char2idx, speaker_code=''):
     phones = re.split('\s+', text.strip(' \n'))
     if speaker_code: # then make speaker-dependent phones
         phones = ['%s_%s'%(phone, speaker_code) for phone in phones]
-    for phone in phones: 
+    for phone in phones:
         if phone not in char2idx:
             print(text)
             sys.exit('Phone %s not listed in phone set'%(phone))
@@ -119,8 +119,8 @@ def load_data(hp, mode="train"):
         if len(fields) >= 4:
             phones = fields[3]
 
-        if hp.validpatt: 
-            if mode=="train": 
+        if hp.validpatt:
+            if mode=="train":
                 if hp.validpatt in fname:
                     continue
             elif mode=="validation":
@@ -129,10 +129,10 @@ def load_data(hp, mode="train"):
 
         ## get speaker before phones in case need to get speaker-dependent phones
         if get_speaker_codes:
-            assert len(fields) >= 5, fields            
+            assert len(fields) >= 5, fields
             speaker = fields[4]
             speaker_ix = speaker2ix[speaker]
-            speakers.append(np.array(speaker_ix, np.int32))    
+            speakers.append(np.array(speaker_ix, np.int32))
 
         if norm_text is None:
             letters_or_phones = [] #  [0] ## dummy 'text' (1 character of padding) where we are using audio only
@@ -144,7 +144,7 @@ def load_data(hp, mode="train"):
             phones = phones_normalize(phones, char2idx, speaker_code=speaker_code) # in case of phones, all EOS markers are assumed included
             letters_or_phones = [char2idx[char] for char in phones]
         elif hp.input_type == 'letters':
-            text = text_normalize(norm_text, hp) + "E"  # E: EOS
+            text = text_normalize(norm_text, hp) + u"E"  # E: EOS
             letters_or_phones = [char2idx[char] for char in text]
 
         text_length = len(letters_or_phones)
@@ -158,7 +158,7 @@ def load_data(hp, mode="train"):
 
         fpath = os.path.join(hp.waveforms, fname + ".wav")
         fpaths.append(fpath)
-        text_lengths.append(text_length)                
+        text_lengths.append(text_length)
 
         if hp.merlin_label_dir: ## only get shape here -- get the data later
             label_length, label_dim = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")).shape
@@ -166,7 +166,7 @@ def load_data(hp, mode="train"):
             assert label_dim==hp.merlin_lab_dim
 
         if hp.use_external_durations:
-            assert len(fields) >= 6, fields            
+            assert len(fields) >= 6, fields
             duration_data = fields[5]
             duration_data = [int(value) for value in re.split('\s+', duration_data.strip(' '))]
             duration_data = np.array(duration_data, np.int32)
@@ -177,7 +177,7 @@ def load_data(hp, mode="train"):
                 assert len(duration_data) == text_length, (len(duration_data), text_length, fpath)
             if nframes:
                 assert duration_data.sum() == nframes*hp.r, (duration_data.sum(), nframes*hp.r)
-            durations.append(duration_data)             
+            durations.append(duration_data)
 
         # !TODO! check this -- duplicated!?
         # if hp.merlin_label_dir: ## only get shape here -- get the data later
@@ -190,10 +190,10 @@ def load_data(hp, mode="train"):
             logging.error('No validation sentences collected: maybe the validpatt %s matches no training data file names?'%(hp.validpatt)) ; sys.exit(1)
 
     logging.info ('Loaded data for %s sentences'%(len(texts)))
-    logging.info ('Sentences skipped with missing features: %s'%(no_data_count))    
+    logging.info ('Sentences skipped with missing features: %s'%(no_data_count))
     logging.info ('Sentences skipped with > max_T (%s) frames: %s'%(hp.max_T, too_long_count_frames))
     logging.info ('Additional sentences skipped with > max_N (%s) letters/phones: %s'%(hp.max_N, too_long_count_text))
- 
+
 
 
 
@@ -214,11 +214,11 @@ def load_data(hp, mode="train"):
 
     if mode == 'train':
         ## Return string representation which will be parsed with tf's decode_raw:
-        texts = [text.tostring() for text in texts] 
+        texts = [text.tostring() for text in texts]
         if get_speaker_codes:
-            speakers = [speaker.tostring() for speaker in speakers]      
+            speakers = [speaker.tostring() for speaker in speakers]
         if hp.use_external_durations:
-            durations = [d.tostring() for d in durations]   
+            durations = [d.tostring() for d in durations]
 
     if mode in ['validation', 'synthesis']:
         ## Prepare a batch of 'stacked texts' (matrix with number of rows==synthesis batch size, and each row an array of integers)
@@ -232,9 +232,9 @@ def load_data(hp, mode="train"):
             for i, dur in enumerate(durations):
                 duration_matrix = durations_to_hard_attention_matrix(dur)
                 duration_matrix = end_pad_for_reduction_shape_sync(duration_matrix, hp)
-                duration_matrix = duration_matrix[0::hp.r, :] 
+                duration_matrix = duration_matrix[0::hp.r, :]
                 m,n = duration_matrix.shape
-                stacked_durations[i, :m, :n] = duration_matrix            
+                stacked_durations[i, :m, :n] = duration_matrix
             durations = stacked_durations
 
 
@@ -253,9 +253,9 @@ def load_data(hp, mode="train"):
 
     ### Older version:- TODO clean up at some point
     # if mode == 'train':
-    #     texts = [text.tostring() for text in texts]  
+    #     texts = [text.tostring() for text in texts]
     #     if get_speaker_codes:
-    #         speakers = [speaker.tostring() for speaker in speakers]         
+    #         speakers = [speaker.tostring() for speaker in speakers]
     #     if n_utts > 0:
     #         assert hp.n_utts <= len(fpaths)
     #         logging.info ('Take first %s (n_utts) sentences'%(n_utts))
@@ -263,10 +263,10 @@ def load_data(hp, mode="train"):
     #             return fpaths[:n_utts], text_lengths[:n_utts], texts[:n_utts], speakers[:n_utts]
     #         else:
     #             return fpaths[:n_utts], text_lengths[:n_utts], texts[:n_utts]
-    #     else:  
+    #     else:
     #         if get_speaker_codes:
     #             return fpaths, text_lengths, texts, speakers
-    #         else:  
+    #         else:
     #             return fpaths, text_lengths, texts
     # elif mode=='validation':
     #     #texts = [text for text in texts if len(text) <= hp.max_N]
@@ -291,7 +291,7 @@ def get_batch(hp, batchsize):
     # print ('get_batch')
     with tf.device('/cpu:0'):
         # Load data
-        dataset = load_data(hp) 
+        dataset = load_data(hp)
         fpaths, text_lengths, texts = dataset['fpaths'], dataset['text_lengths'], dataset['texts']
         label_lengths, audio_lengths = dataset['label_lengths'], dataset['audio_lengths'] ## might be []
 
@@ -361,25 +361,25 @@ def get_batch(hp, batchsize):
                 mag = np.pad(mag, [[0, start], [0, 0]], mode="constant")[start:,:]
                 return fname, mel, mag, start
 
-            ## Originally had these separate (see below) but couldn't find a 
+            ## Originally had these separate (see below) but couldn't find a
             ## good way to pass random_start_position between the 2 places -- TODO - prune
             def _load_and_reduce_spectrograms_and_durations(fpath, duration):
                 fname, mel, mag, random_start_position = _load_and_reduce_spectrograms(fpath)
                 duration_matrix = durations_to_hard_attention_matrix(duration)
                 duration_matrix = end_pad_for_reduction_shape_sync(duration_matrix, hp)
                 duration_matrix = duration_matrix[random_start_position::hp.r, :]
-                return fname, mel, mag, duration_matrix, random_start_position           
+                return fname, mel, mag, duration_matrix, random_start_position
             def _load_and_reduce_spectrograms_and_durations_and_fractional_positions(fpath, duration):
                 fname, mel, mag, duration_matrix, random_start_position = _load_and_reduce_spectrograms_and_durations(fpath, duration)
                 positions = durations_to_position(duration, fractional=True)
                 positions = end_pad_for_reduction_shape_sync(positions, hp)
-                positions = positions[random_start_position::hp.r, :]                
+                positions = positions[random_start_position::hp.r, :]
                 return fname, mel, mag, duration_matrix, positions
             def _load_and_reduce_spectrograms_and_durations_and_absolute_positions(fpath, duration):
                 fname, mel, mag, duration_matrix, random_start_position = _load_and_reduce_spectrograms_and_durations(fpath, duration)
                 positions = durations_to_position(duration, fractional=False)
                 positions = end_pad_for_reduction_shape_sync(positions, hp)
-                positions = positions[random_start_position::hp.r, :]                   
+                positions = positions[random_start_position::hp.r, :]
                 return fname, mel, mag, duration_matrix, positions
             def _load_merlin_positions():
                 fname = os.path.basename(fpath)
@@ -390,7 +390,7 @@ def get_batch(hp, batchsize):
                 fname, mel, mag, duration_matrix, random_start_position = _load_and_reduce_spectrograms_and_durations(fpath, duration)
                 positions = _load_merlin_positions(fpath, hp)
                 positions = end_pad_for_reduction_shape_sync(positions, hp)
-                positions = positions[random_start_position::hp.r, :]                   
+                positions = positions[random_start_position::hp.r, :]
                 return fname, mel, mag, duration_matrix, positions
 
             if hp.use_external_durations:
@@ -476,11 +476,11 @@ def get_batch(hp, batchsize):
 
         # Batching
         tensordict = {'text': text, 'mel': mel, 'mag': mag, 'fname': fname}
-        
+
         ## TODO: refactor to merge some of these blocks?
 
         if hp.multispeaker:
-            tensordict['speaker'] = speaker  
+            tensordict['speaker'] = speaker
         if hp.use_external_durations:
             tensordict['duration'] = duration_matrix
         if hp.attention_guide_dir:
@@ -489,8 +489,8 @@ def get_batch(hp, batchsize):
             tensordict['merlin_label'] = merlin_label
         if 'position_in_phone' in hp.history_type:
             tensordict['position_in_phone'] = position_in_phone
-            
-         
+
+
         if hp.bucket_data_by == 'audio_length':
             maxlen, minlen = max(audio_lengths), min(audio_lengths)
             sort_by_slice = audio_length
@@ -508,7 +508,7 @@ def get_batch(hp, batchsize):
             sys.exit('hp.bucket_data_by must be one of "audio_length", "text_length"')
 
 
-        _, batched_tensor_dict = tf.contrib.training.bucket_by_sequence_length(             
+        _, batched_tensor_dict = tf.contrib.training.bucket_by_sequence_length(
                                             input_length=sort_by_slice,
                                             tensors=tensordict,
                                             batch_size=batchsize,
@@ -517,9 +517,5 @@ def get_batch(hp, batchsize):
                                             capacity=batchsize*4,
                                             dynamic_pad=True)
 
-        batched_tensor_dict['num_batch'] = num_batch        
+        batched_tensor_dict['num_batch'] = num_batch
         return batched_tensor_dict
-
-
-
-
