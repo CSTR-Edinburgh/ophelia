@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #!/usr/bin/env python2
 '''
-Adapted from original code by kyubyong park. kbpark.linguist@gmail.com. 
+Adapted from original code by kyubyong park. kbpark.linguist@gmail.com.
 https://www.github.com/kyubyong/dc_tts
 '''
 
@@ -92,7 +92,7 @@ def spectrogram2wav(hp, mag, trim_output=False):
 
     if trim_output: # removed this as default, as we now do early stopping in generation
         wav, _ = librosa.effects.trim(wav)
-    
+
     return wav.astype(np.float32)
 
 def griffin_lim(hp, spectrogram):
@@ -114,6 +114,56 @@ def invert_spectrogram(hp, spectrogram):
       spectrogram: [1+n_fft//2, t]
     '''
     return librosa.istft(spectrogram, hp.hop_length, win_length=hp.win_length, window="hann")
+
+def plot_loss_history(hp, loss_history, model):
+    if model == 't2m':
+        total_loss = []
+        mel_loss = []
+        bd1_loss = []
+        att_loss = []
+        l2_loss = []
+        for l in loss_history:
+            total_loss.append(l[0])
+            mel_loss.append(l[1])
+            bd1_loss.append(l[2])
+            att_loss.append(l[3])
+            l2_loss.append(l[4])
+
+        plt.clf()
+        plt.plot(total_loss, label='Total loss')
+        plt.plot(mel_loss, label='Mel loss')
+        plt.plot(bd1_loss, label='Bd1 loss')
+        plt.plot(att_loss, label='Attention loss')
+        plt.plot(l2_loss, label='L2 loss')
+
+        plt.title('Losses')
+        plt.xlabel('Batches')
+        plt.ylabel(model+' loss error')
+        plt.legend()
+        plt.savefig('plots/'+hp.config_name+'_'+model+'_'+'losses.png')
+
+    else:
+        total_loss = []
+        mags_loss = []
+        bd2_loss = []
+        l2_loss = []
+        for l in loss_history:
+            total_loss.append(l[0])
+            mags_loss.append(l[1])
+            bd2_loss.append(l[2])
+            l2_loss.append(l[3])
+
+        plt.clf()
+        plt.plot(total_loss, label='Total loss')
+        plt.plot(mags_loss, label='Mags loss')
+        plt.plot(bd2_loss, label='Bd2 loss')
+        plt.plot(l2_loss, label='L2 loss')
+
+        plt.title('Losses')
+        plt.xlabel('Batches')
+        plt.ylabel(model+' loss error')
+        plt.legend()
+        plt.savefig('plots/'+hp.config_name+'_'+model+'_'+'losses.png')
 
 # TODO add functionality so that we can also plot on phone identities to the encoder states on the y-axis
 def plot_alignment(hp, alignment, utt_idx, t2m_epoch, dir=''):
@@ -185,7 +235,7 @@ def end_pad_for_reduction_shape_sync(data, hp):
     return data
 
 
-def durations_to_hard_attention_matrix(durations):   
+def durations_to_hard_attention_matrix(durations):
     '''
     Take array of durations, return selection matrix to replace A in attention mechanism.
     E.g.:
@@ -195,7 +245,7 @@ def durations_to_hard_attention_matrix(durations):
     [[1. 1. 1. 0. 0. 0.]
      [0. 0. 0. 0. 0. 0.]
      [0. 0. 0. 1. 0. 0.]
-     [0. 0. 0. 0. 1. 1.]]  
+     [0. 0. 0. 0. 1. 1.]]
     '''
     nphones = len(durations)
     nframes = durations.sum()
@@ -205,13 +255,13 @@ def durations_to_hard_attention_matrix(durations):
         end = start + dur
         A[start:end,i] = 1.0
         start = end
-    assert A.sum(axis=1).all() == 1.0 
+    assert A.sum(axis=1).all() == 1.0
     assert A.sum(axis=0).all() == durations.all()
     return A
 
 
 def durations_to_position(durations, fractional=False):
-    
+
     nframes = durations.sum()
     positions = np.zeros((nframes,), dtype=np.float32)
     start = 0
@@ -257,7 +307,7 @@ def magphase_synth_from_compressed(split_predictions, samplerate=48000, b_const_
 
     synwave = mp.synthesis_from_compressed(split_predictions['mag'], split_predictions['real'], \
                     split_predictions['imag'], lfz, samplerate, b_const_rate=b_const_rate) # fft_len=2048,
-    
+
     return synwave
 
 # from: https://nolanbconaway.github.io/blog/2017/softmax-numpy
@@ -308,7 +358,7 @@ def softmax(X, theta = 1.0, axis = None):
 if __name__ == '__main__':
     if 0:
         import pylab
-        a = guided_attention(g=0.2)    
+        a = guided_attention(g=0.2)
         pylab.imshow(a)
         pylab.show()
     if 1:

@@ -19,10 +19,10 @@ from tensorflow.python import debug as tf_debug
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
 from data_load import load_data
 from synthesize import synth_text2mel, synth_mel2mag, split_batch, make_mel_batch, synth_codedtext2mel, get_text_lengths, encode_text, list2batch
-from objective_measures import compute_dtw_error, compute_simple_LSD
+from objective_measures import compute_dtw_error, compute_simple_LSD, plot_objective_measures
 from libutil import basename, safe_makedir
 from configuration import load_config
-from utils import plot_alignment
+from utils import plot_alignment, plot_loss_history
 
 from utils import durations_to_position, end_pad_for_reduction_shape_sync
 
@@ -30,12 +30,6 @@ import logger_setup
 from logging import info
 
 from tqdm import tqdm
-
-### added by me
-import librosa
-import matplotlib
-matplotlib.use('pdf')
-import matplotlib.pyplot as plt
 
 def compute_validation(hp, model_type, epoch, inputs, synth_graph, sess, speaker_codes, \
          valid_filenames, validation_set_reference, duration_data=None, validation_labels=None, position_in_phone_data=None):
@@ -166,9 +160,9 @@ def main_work():
         validation_inputs = None
         validation_reference = None
 
-
-
-
+    # accumulate validation scores
+    acc_validation_scores = []
+    validation_epochs = []
 
     ## Get the text and mel inputs for the utts you would like to plot attention graphs for
     if hp.plot_attention_every_n_epochs and model_type=='t2m': #check if we want to plot attention
@@ -269,6 +263,8 @@ def main_work():
                 get_and_plot_alignments(hp, epoch - 1, attention_graph, sess, attention_inputs, attention_mels, logdir + "/alignments") # epoch-1 refers to freshly initialised model
 
         current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference, duration_data=validation_duration_data, validation_labels=validation_labels, position_in_phone_data=position_in_phone_data)
+        acc_validation_scores.append(current_score)
+        validation_epochs.append(epoch)
         info('validation epoch {0}: {1:0.3f}'.format(epoch, current_score))
 
         while 1:
@@ -289,6 +285,8 @@ def main_work():
                     info('train epoch {0}: {1}'.format(epoch, train_loss_mean_std))
 
                     current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference, duration_data=validation_duration_data, validation_labels=validation_labels, position_in_phone_data=position_in_phone_data)
+                    acc_validation_scores.append(current_score)
+                    validation_epochs.append(epoch)
                     info('validation epoch {0:0}: {1:0.3f}'.format(epoch, current_score))
 
             ### End of epoch: plot attention matrices? #################################
@@ -311,7 +309,17 @@ def main_work():
 
             epoch += 1
             if epoch > hp.max_epochs:
+
+                # plot validation score
+                if model_type == 't2m':
+                    title = 'dtw_lsd_error'
+                else:
+                    title = 'lsd_error'
+
+                plot_loss_history(hp, loss_history, model_type)
+                plot_objective_measures(hp, acc_validation_scores, validation_epochs, title)
                 info('Max epochs ({}) reached: end training'.format(hp.max_epochs)); return
+
 
     print("Done")
 

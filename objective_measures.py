@@ -2,13 +2,16 @@
 '''
 TODO: logSpecDbDist appropriate? (both mels & mags?)
 TODO: compute output length error?
-TODO: work out best way of handling the fact that predicted *coarse* features 
+TODO: work out best way of handling the fact that predicted *coarse* features
       can correspond to text but be arbitrarily 'out of phase' with reference.
-      Mutliple references? Or compare against full-time resolution reference? 
+      Mutliple references? Or compare against full-time resolution reference?
 '''
 import logging
 from mcd import dtw
 import mcd.metrics_fast as mt
+import matplotlib
+matplotlib.use('pdf')
+import matplotlib.pyplot as plt
 
 def compute_dtw_error(reference, predictions):
     minCostTot = 0.0
@@ -25,7 +28,7 @@ def compute_dtw_error(reference, predictions):
 
 def compute_simple_LSD(reference_list, prediction_list):
     costTot = 0.0
-    framesTot = 0    
+    framesTot = 0
     for (synth, nat) in zip(prediction_list, reference_list):
         #synth = prediction_tensor[i,:,:].astype('float64')
         # len_nat = len(nat)
@@ -40,5 +43,16 @@ def compute_simple_LSD(reference_list, prediction_list):
         framesTot += len(nat)
         costTot += cost
     return costTot / framesTot
-    
 
+def plot_objective_measures(hp, accumulated_score, valid_epochs, name):
+    plt.clf()
+    plt.plot(valid_epochs, accumulated_score)
+    plt.title(name)
+    plt.xlabel('Epochs')
+    if name == 'dtw_lsd_error':
+        model = 'T2M'
+    else:
+        model = 'SSRN'
+    plt.ylabel(model+' LSD error')
+    plt.savefig('plots/'+hp.config_name+'_'+name+'.png')
+    
