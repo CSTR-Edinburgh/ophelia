@@ -36,11 +36,15 @@ class Graph(object):
 
         if self.mode is 'train':
             batchdict = get_batch(hp, self.get_batchsize())
+            print ('batch dict', batchdict)
 
             if 0: print (batchdict) ; print (batchdict.keys()) ; sys.exit('vsfbd')
 
             self.L, self.mels, self.mags, self.fnames, self.num_batch = \
                 batchdict['text'], batchdict['mel'], batchdict['mag'], batchdict['fname'], batchdict['num_batch']
+
+
+            print('self L', self.L)
 
             if hp.multispeaker:
                 ## check multispeaker config is valid:- TODO: to config validation?

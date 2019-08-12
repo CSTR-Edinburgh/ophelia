@@ -70,11 +70,19 @@ def main_work():
     a = ArgumentParser()
     a.add_argument('-c', dest='config', required=True, type=str)
     a.add_argument('-m', dest='model_type', required=True, choices=['t2m', 'ssrn', 'babbler'])
+    a.add_argument('-e', dest='max_epochs', required=False)
+    a.add_argument('-u', dest='n_utts', required=False)
     opts = a.parse_args()
 
     # ===============================================
     model_type = opts.model_type
     hp = load_config(opts.config)
+
+    # replace for curriculum
+    if hp.curriculum:
+        hp.n_utts = int(opts.n_utts)
+        hp.max_epochs = int(opts.max_epochs)
+
     logdir = hp.logdir + "-" + model_type
     logger_setup.logger_setup(logdir)
     info('Command line: %s'%(" ".join(sys.argv)))

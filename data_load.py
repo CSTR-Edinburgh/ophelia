@@ -23,6 +23,7 @@ from utils import load_spectrograms, end_pad_for_reduction_shape_sync, \
                     durations_to_position # durations_to_fractional_position,
 
 from tqdm import tqdm
+from tensorflow.python.training import queue_runner
 
 def load_vocab(hp):
     vocab = hp.vocab # default
@@ -71,6 +72,7 @@ def load_data(hp, mode="train"):
 
     if mode in ["train", "validation"]:
         transcript = os.path.join(hp.transcript)
+
     else:
         transcript = os.path.join(hp.test_transcript)
 
@@ -79,7 +81,16 @@ def load_data(hp, mode="train"):
 
     fpaths, text_lengths, texts, speakers, durations = [], [], [], [], []
     audio_lengths, label_lengths = [], []
-    lines = codecs.open(transcript, 'r', 'utf-8').readlines()
+
+    if hp.curriculum and mode == 'train':
+        lines = [line.split('|') for line in codecs.open(transcript, 'r', 'utf-8').readlines()]
+        lines = sorted(lines, key=lambda x: x[5])
+        logging.info('Easiest sentence: \"'+lines[0][2]+'\"  Score: '+lines[0][-1])
+        logging.info('Hardest sentence: \"'+lines[hp.n_utts][2]+'\"  Score: '+lines[hp.n_utts][-1])
+        lines = ['|'.join(line) for line in lines]
+
+    else:
+        lines = codecs.open(transcript, 'r', 'utf-8').readlines()
 
     too_long_count_frames = 0
     too_long_count_text = 0
@@ -87,6 +98,7 @@ def load_data(hp, mode="train"):
 
     nframes = 0 ## default 'False' value
     for line in tqdm(lines, desc='load_data'):
+
         line = line.strip('\n\r |')
         if line == '':
             continue
@@ -214,6 +226,7 @@ def load_data(hp, mode="train"):
 
     if mode == 'train':
         ## Return string representation which will be parsed with tf's decode_raw:
+        print ('line 228 phone id', texts[0])
         texts = [text.tostring() for text in texts]
         if get_speaker_codes:
             speakers = [speaker.tostring() for speaker in speakers]
@@ -309,7 +322,9 @@ def get_batch(hp, batchsize):
         if audio_lengths:
             input_list.append(audio_lengths)
 
-        sliced_data = tf.train.slice_input_producer(input_list, shuffle=True)
+
+        sliced_data = tf.train.slice_input_producer(input_list, shuffle=False)
+
         fpath, text_length, text = sliced_data[:3]
         i = 3
         if hp.multispeaker:
@@ -507,8 +522,7 @@ def get_batch(hp, batchsize):
         else:
             sys.exit('hp.bucket_data_by must be one of "audio_length", "text_length"')
 
-
-        _, batched_tensor_dict = tf.contrib.training.bucket_by_sequence_length(
+        sequence_lengths, batched_tensor_dict = tf.contrib.training.bucket_by_sequence_length(
                                             input_length=sort_by_slice,
                                             tensors=tensordict,
                                             batch_size=batchsize,
