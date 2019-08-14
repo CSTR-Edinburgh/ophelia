@@ -15,7 +15,7 @@ from argparse import ArgumentParser
 import numpy as np
 import tensorflow as tf
 from tensorflow.python import debug as tf_debug
-
+import time
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
 from data_load import load_data
 from synthesize import synth_text2mel, synth_mel2mag, split_batch, make_mel_batch, synth_codedtext2mel, get_text_lengths, encode_text, list2batch
@@ -87,12 +87,11 @@ def main_work():
     logger_setup.logger_setup(logdir)
     info('Command line: %s'%(" ".join(sys.argv)))
 
-
-
-
+    # can ewe print the hyperparameters for reproducibility?
+    info('hyperparameters: '+str(hp.__dict__.items()))
 
     ### TODO: move this to its own function somewhere. Can be used also at synthesis time?
-    ### Prepare reference data for validation set:  ### TODO: alternative to holding in memory?
+    ### Prepare reference data for ation set:  ### TODO: alternative to holding in memory?
     dataset = load_data(hp, mode="validation")
     valid_filenames, validation_text = dataset['fpaths'], dataset['texts']
 
@@ -117,6 +116,7 @@ def main_work():
 
 
     valid_filenames = np.array(valid_filenames)[v_indices]
+    info('validation files', str(valid_filenames)) # to know which files we are validating
     validation_mags = [np.load(hp.full_audio_dir + os.path.sep + basename(fpath)+'.npy') \
                                 for fpath in valid_filenames]
     validation_text = validation_text[v_indices, :]
@@ -159,7 +159,6 @@ def main_work():
 
 
     elif model_type=='ssrn':
-        print ('validation files', valid_filenames)
         validation_inputs, validation_lengths = make_mel_batch(hp, valid_filenames)
 
         validation_reference = validation_mags
@@ -275,11 +274,21 @@ def main_work():
         validation_epochs.append(epoch)
         info('validation epoch {0}: {1:0.3f}'.format(epoch, current_score))
 
+        # main epoch
         while 1:
+            # take epoch time
+            epoch_start = time.time()
+            epoch_loss = []
             progress_bar_text = '%s/%s; ep. %s'%(hp.config_name, model_type, epoch)
             for batch_in_current_epoch in tqdm(range(g.num_batch), total=g.num_batch, ncols=80, leave=True, unit='b', desc=progress_bar_text):
                 gs, loss_components, _ = sess.run([g.global_step, g.loss_components, g.train_op])
+                epoch_loss.append(loss_components)
+                #info('epoch '+str(epoch)+' raw loss: '+str(loss_components)+'///')
+                # if we do this here this is doing it for every batch, that why oliver is getting the mean to get the loss for the whole epoch
                 loss_history.append(loss_components)
+            epoch_loss = np.array(epoch_loss)
+            info('epoch '+str(epoch)+' loss: '+str(' '.join(['{:0.3f}'.format(score) for score in epoch_loss.mean(axis=0)]))+'///') 
+            epoch_loss = []
 
             ### End of epoch: validate?
             if hp.validate_every_n_epochs:
@@ -290,12 +299,13 @@ def main_work():
                     loss_history = []
 
                     train_loss_mean_std = ' '.join(['{:0.3f}'.format(score) for score in train_loss_mean_std])
-                    info('train epoch {0}: {1}'.format(epoch, train_loss_mean_std))
+                    info('eval train epoch {0}: {1}'.format(epoch, train_loss_mean_std))
 
                     current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference, duration_data=validation_duration_data, validation_labels=validation_labels, position_in_phone_data=position_in_phone_data)
                     acc_validation_scores.append(current_score)
                     validation_epochs.append(epoch)
                     info('validation epoch {0:0}: {1:0.3f}'.format(epoch, current_score))
+                    info('validation run with '+str(hp.n_utts)+' n_utts')
 
             ### End of epoch: plot attention matrices? #################################
             if hp.plot_attention_every_n_epochs and model_type == 't2m' and epoch % hp.plot_attention_every_n_epochs == 0: # ssrn model doesn't generate alignments
@@ -314,18 +324,12 @@ def main_work():
                     info('Archive model %s'%(stem))
                     for fname in glob.glob(stem + '*'):
                         shutil.copy(fname, logdir + '/archive/')
-
+            # take epoch time
+            epoch_end = time.time()
+            info('time epoch took: '+str((epoch_end - epoch_start)))
             epoch += 1
             if epoch > hp.max_epochs:
 
-                # plot validation score
-                if model_type == 't2m':
-                    title = 'dtw_lsd_error'
-                else:
-                    title = 'lsd_error'
-
-                plot_loss_history(hp, loss_history, model_type)
-                plot_objective_measures(hp, acc_validation_scores, validation_epochs, title)
                 info('Max epochs ({}) reached: end training'.format(hp.max_epochs)); return
 
 
