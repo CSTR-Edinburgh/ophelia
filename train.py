@@ -53,11 +53,16 @@ def compute_validation(hp, model_type, epoch, inputs, synth_graph, sess, speaker
     return score
 
 
-def get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_inputs, attention_mels, alignment_dir, speaker_codes):
-    return_values = sess.run([attention_graph.alignments], # use attention_graph to obtain attention maps for a few given inputs and mels
+def get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_inputs, attention_mels, alignment_dir, speaker_codes=None):
+    if speaker_codes:
+	return_values = sess.run([attention_graph.alignments], # use attention_graph to obtain attention maps for a few given inputs and mels
                              {attention_graph.L: attention_inputs,
                               attention_graph.mels: attention_mels,
                               attention_graph.speakers: speaker_codes})
+    else:
+	return_values = sess.run([attention_graph.alignments], # use attention_graph to obtain attention maps for a few given inputs and mels
+                             {attention_graph.L: attention_inputs,
+                              attention_graph.mels: attention_mels})
     alignments = return_values[0] # sess run returns a list, so unpack this list
     for i in range(hp.num_sentences_to_plot_attention):
         plot_alignment(hp, alignments[i], i+1, epoch, dir=alignment_dir)
@@ -92,7 +97,7 @@ def main_work():
 
     ### TODO: move this to its own function somewhere. Can be used also at synthesis time?
     ### Prepare reference data for ation set:  ### TODO: alternative to holding in memory?
-    dataset = load_data(hp, mode="validation")
+    dataset, char2idx = load_data(hp, mode="validation")
     valid_filenames, validation_text = dataset['fpaths'], dataset['texts']
 
     speaker_codes = validation_duration_data = position_in_phone_data = None ## defaults
