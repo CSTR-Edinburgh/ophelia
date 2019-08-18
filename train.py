@@ -274,6 +274,11 @@ def main_work():
         validation_epochs.append(epoch)
         info('validation epoch {0}: {1:0.3f}'.format(epoch, current_score))
 
+        if hp.sample_analysis:
+            outf = open('sample_analysis.txt', 'w')
+            outf.writelines([str(v)+' : '+str(k)+'\n' for k, v in char2idx.items()])
+            outf.writelines('Filename | Losses | Max attentions | Phones'+'\n')
+
         # main epoch
         while 1:
             # take epoch time
@@ -282,12 +287,17 @@ def main_work():
             progress_bar_text = '%s/%s; ep. %s'%(hp.config_name, model_type, epoch)
             for batch_in_current_epoch in tqdm(range(g.num_batch), total=g.num_batch, ncols=80, leave=True, unit='b', desc=progress_bar_text):
                 gs, loss_components, _ = sess.run([g.global_step, g.loss_components, g.train_op])
+
+                if hp.sample_analysis:
+                    info(model_fnames[0].replace('.wav', '')+' | '+str(loss_components)+' | '+str(model_max_alignments[0])+' | '+str(model_L[0])+'\n')
+                    outf.writelines(model_fnames[0].replace('.wav', '')+' | '+str(loss_components)+' | '+str(model_max_alignments[0])+' | '+str(model_L[0])+'\n')
+
                 epoch_loss.append(loss_components)
                 #info('epoch '+str(epoch)+' raw loss: '+str(loss_components)+'///')
                 # if we do this here this is doing it for every batch, that why oliver is getting the mean to get the loss for the whole epoch
                 loss_history.append(loss_components)
             epoch_loss = np.array(epoch_loss)
-            info('epoch '+str(epoch)+' loss: '+str(' '.join(['{:0.3f}'.format(score) for score in epoch_loss.mean(axis=0)]))+'///') 
+            info('epoch '+str(epoch)+' loss: '+str(' '.join(['{:0.3f}'.format(score) for score in epoch_loss.mean(axis=0)]))+'///')
             epoch_loss = []
 
             ### End of epoch: validate?

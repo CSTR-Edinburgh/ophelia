@@ -226,7 +226,6 @@ def load_data(hp, mode="train"):
 
     if mode == 'train':
         ## Return string representation which will be parsed with tf's decode_raw:
-        print ('line 228 phone id', texts[0])
         texts = [text.tostring() for text in texts]
         if get_speaker_codes:
             speakers = [speaker.tostring() for speaker in speakers]
@@ -262,7 +261,9 @@ def load_data(hp, mode="train"):
         dataset['speakers'] = speakers
     if hp.use_external_durations:
         dataset['durations'] = durations
-    return dataset
+
+
+    return dataset, char2idx
 
     ### Older version:- TODO clean up at some point
     # if mode == 'train':
@@ -304,7 +305,7 @@ def get_batch(hp, batchsize):
     # print ('get_batch')
     with tf.device('/cpu:0'):
         # Load data
-        dataset = load_data(hp)
+        dataset, char2idx = load_data(hp)
         fpaths, text_lengths, texts = dataset['fpaths'], dataset['text_lengths'], dataset['texts']
         label_lengths, audio_lengths = dataset['label_lengths'], dataset['audio_lengths'] ## might be []
 
@@ -322,8 +323,10 @@ def get_batch(hp, batchsize):
         if audio_lengths:
             input_list.append(audio_lengths)
 
-
-        sliced_data = tf.train.slice_input_producer(input_list, shuffle=False)
+        if hp.curriculum:
+            sliced_data = tf.train.slice_input_producer(input_list, shuffle=False)
+        else:
+            sliced_data = tf.train.slice_input_producer(input_list, shuffle=True)
 
         fpath, text_length, text = sliced_data[:3]
         i = 3
