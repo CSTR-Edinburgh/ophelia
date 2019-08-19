@@ -157,7 +157,7 @@ def main_work():
 
         if hp.multispeaker:
             #L = validation_text[:hp.num_sentences_to_plot_attention, :]
-            validation_spkr_id = hp.validpatt.split('_')[0]
+            validation_spkr_id = hp.validpatt.replace('dev_', '').split('_')[0]
             speaker2ix = dict(zip(hp.speaker_list, range(len(hp.speaker_list))))
             speaker_ix = speaker2ix[validation_spkr_id]
             validation_speaker = np.ones((hp.num_sentences_to_plot_attention, 1))  *  speaker_ix
