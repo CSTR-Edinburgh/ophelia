@@ -23,7 +23,7 @@ from objective_measures import compute_dtw_error, compute_simple_LSD, plot_objec
 from libutil import basename, safe_makedir
 from configuration import load_config
 from utils import plot_alignment, plot_loss_history
-
+import math
 from utils import durations_to_position, end_pad_for_reduction_shape_sync
 
 import logger_setup
@@ -55,14 +55,14 @@ def compute_validation(hp, model_type, epoch, inputs, synth_graph, sess, speaker
 
 def get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_inputs, attention_mels, alignment_dir, speaker_codes=None):
     if speaker_codes:
-	return_values = sess.run([attention_graph.alignments], # use attention_graph to obtain attention maps for a few given inputs and mels
-                             {attention_graph.L: attention_inputs,
-                              attention_graph.mels: attention_mels,
-                              attention_graph.speakers: speaker_codes})
+    	return_values = sess.run([attention_graph.alignments], # use attention_graph to obtain attention maps for a few given inputs and mels
+                                 {attention_graph.L: attention_inputs,
+                                  attention_graph.mels: attention_mels,
+                                  attention_graph.speakers: speaker_codes})
     else:
-	return_values = sess.run([attention_graph.alignments], # use attention_graph to obtain attention maps for a few given inputs and mels
-                             {attention_graph.L: attention_inputs,
-                              attention_graph.mels: attention_mels})
+    	return_values = sess.run([attention_graph.alignments], # use attention_graph to obtain attention maps for a few given inputs and mels
+                                 {attention_graph.L: attention_inputs,
+                                  attention_graph.mels: attention_mels})
     alignments = return_values[0] # sess run returns a list, so unpack this list
     for i in range(hp.num_sentences_to_plot_attention):
         plot_alignment(hp, alignments[i], i+1, epoch, dir=alignment_dir)
@@ -282,7 +282,7 @@ def main_work():
         if hp.sample_analysis:
             outf = open('sample_analysis.txt', 'w')
             outf.writelines([str(v)+' : '+str(k)+'\n' for k, v in char2idx.items()])
-            outf.writelines('Filename | Losses | Max attentions | Phones'+'\n')
+            outf.writelines('Filename | Losses | Max attentions | Phones | Confidence | DTW LSD'+'\n')
 
         # main epoch
         while 1:
@@ -291,11 +291,29 @@ def main_work():
             epoch_loss = []
             progress_bar_text = '%s/%s; ep. %s'%(hp.config_name, model_type, epoch)
             for batch_in_current_epoch in tqdm(range(g.num_batch), total=g.num_batch, ncols=80, leave=True, unit='b', desc=progress_bar_text):
-                gs, loss_components, _ = sess.run([g.global_step, g.loss_components, g.train_op])
+                gs, loss_components, _, model_fnames, model_alignments, model_max_alignments, model_L, model_mels, model_predicted_mels = sess.run([g.global_step, g.loss_components, g.train_op, g.fnames, g.alignments, g.max_attentions, g.L, g.mels, g.Y])
 
                 if hp.sample_analysis:
-                    info(model_fnames[0].replace('.wav', '')+' | '+str(loss_components)+' | '+str(model_max_alignments[0])+' | '+str(model_L[0])+'\n')
-                    outf.writelines(model_fnames[0].replace('.wav', '')+' | '+str(loss_components)+' | '+str(model_max_alignments[0])+' | '+str(model_L[0])+'\n')
+                    if hp.batchsize['t2m'] != 1:
+                        pass # TODO: rise error
+                    # calculate attention coverage https://github.com/M4t1ss/ConfidenceThroughAttention/blob/master/thecode.py
+                    # the closer to 1 the alignment is worse
+                    for sample in model_alignments:
+                        result = 0.0
+                        for i in sample:
+                            sumed = np.sum(i)
+                            pen = 1 / (1 + (abs(1 - sumed)**2))
+                            result += math.log(pen)
+                        coverage = result / len(i)
+                    # we'd like to match with alignment plots to see if it makes sense
+                    for sample in model_alignments:
+                        plot_alignment(hp, sample, model_fnames[0].replace('.wav', ''), 'final_epoch', logdir + "/alignments")
+
+                    # calculate dtw error
+                    score = compute_dtw_error(model_mels, model_predicted_mels)
+
+                    info(model_fnames[0].replace('.wav', '')+' | '+str(loss_components)+' | '+str(model_max_alignments[0])+' | '+str(model_L[0])+' | '+str(coverage)+' | '+str(score)+'\n')
+                    outf.writelines(model_fnames[0].replace('.wav', '')+' |/ '+str(loss_components)+' |= '+str(model_max_alignments[0])+' |& '+str(model_L[0])+' |% '+str(coverage)+' |$ '+str(score)+'\n')
 
                 epoch_loss.append(loss_components)
                 #info('epoch '+str(epoch)+' raw loss: '+str(loss_components)+'///')
