@@ -445,7 +445,7 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
     '''
     assert hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
 
-    dataset = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
+    dataset, char2idx = load_data(hp, mode="synthesis") #since mode != 'train' or 'validation', will load test_transcript rather than transcript
     fpaths, L = dataset['fpaths'], dataset['texts']
     position_in_phone_data = duration_data = labels = None # default
     if hp.use_external_durations:
