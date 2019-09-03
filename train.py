@@ -5,15 +5,20 @@ Based on code by kyubyong park at https://www.github.com/kyubyong/dc_tts
 '''
 from __future__ import print_function
 
+SEED_VALUE=1111
 import os
+os.environ['PYTHONHASHSEED']=str(SEED_VALUE)
 import sys
 import glob
 import shutil
 import random
+random.seed(SEED_VALUE)
 from argparse import ArgumentParser
 
 import numpy as np
+np.random.seed(SEED_VALUE)
 import tensorflow as tf
+tf.set_random_seed(SEED_VALUE)
 from tensorflow.python import debug as tf_debug
 import time
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
@@ -54,7 +59,7 @@ def compute_validation(hp, model_type, epoch, inputs, synth_graph, sess, speaker
 
 
 def get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_inputs, attention_mels, alignment_dir, speaker_codes=None):
-    if speaker_codes:
+    if hp.multispeaker:
     	return_values = sess.run([attention_graph.alignments], # use attention_graph to obtain attention maps for a few given inputs and mels
                                  {attention_graph.L: attention_inputs,
                                   attention_graph.mels: attention_mels,
@@ -90,6 +95,7 @@ def main_work():
 
     logdir = hp.logdir + "-" + model_type
     logger_setup.logger_setup(logdir)
+    info('Random seed: '+str(SEED_VALUE))
     info('Command line: %s'%(" ".join(sys.argv)))
 
     # can ewe print the hyperparameters for reproducibility?
@@ -108,7 +114,7 @@ def main_work():
 
 
     ## take random subset of validation set to avoid 'This is a librivox recording' type sentences
-    random.seed(1234)
+    #random.seed(1234)
     v_indices = range(len(valid_filenames))
     random.shuffle(v_indices)
     v = min(hp.validation_sentences_to_evaluate, len(valid_filenames))
@@ -157,11 +163,12 @@ def main_work():
 
         if hp.multispeaker:
             #L = validation_text[:hp.num_sentences_to_plot_attention, :]
-            validation_spkr_id = hp.validpatt.replace('dev_', '').split('_')[0]
-            speaker2ix = dict(zip(hp.speaker_list, range(len(hp.speaker_list))))
-            speaker_ix = speaker2ix[validation_spkr_id]
-            validation_speaker = np.ones((hp.num_sentences_to_plot_attention, 1))  *  speaker_ix
-
+            validation_speaker = np.ones((hp.num_sentences_to_plot_attention, 1))
+            for i in range(0, len(valid_filenames[:hp.validation_sentences_to_synth_params])):
+                validation_spkr_id = valid_filenames[i].split('/')[-1].replace('dev_', '').split('_')[0]
+                speaker2ix = dict(zip(hp.speaker_list, range(len(hp.speaker_list))))
+                speaker_ix = speaker2ix[validation_spkr_id]
+                validation_speaker[i] = validation_speaker[i] * speaker_ix
 
     elif model_type=='ssrn':
         validation_inputs, validation_lengths = make_mel_batch(hp, valid_filenames)
