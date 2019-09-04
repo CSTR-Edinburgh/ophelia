@@ -61,7 +61,7 @@ def load_data(hp, mode="train"):
       Args:
           mode: "train" / "validation" / "synthesize".
     '''
-    assert mode in ('train', 'synthesis', 'validation')
+    assert mode in ('train', 'synthesis', 'validation', 'external_validation')
     logging.info('Start loading data in mode: %s'%(mode))
 
     get_speaker_codes = ( hp.multispeaker != []) ## False if hp.multispeaker is empty list
@@ -72,7 +72,8 @@ def load_data(hp, mode="train"):
 
     if mode in ["train", "validation"]:
         transcript = os.path.join(hp.transcript)
-
+    elif mode in ["external_validation"]:
+        transcript = os.path.join(hp.valid_transcript)
     else:
         transcript = os.path.join(hp.test_transcript)
 
@@ -115,7 +116,7 @@ def load_data(hp, mode="train"):
             norm_text = None # to test if audio only
 
 
-        if mode in ["train", "validation"] and os.path.exists(hp.coarse_audio_dir):
+        if mode in ["train", "validation", "external_validation"] and os.path.exists(hp.coarse_audio_dir):
             mel = "{}/{}".format(hp.coarse_audio_dir, fname+".npy")
             if not os.path.exists(mel):
                 logging.debug('no file %s'%(mel))
@@ -232,7 +233,7 @@ def load_data(hp, mode="train"):
         if hp.use_external_durations:
             durations = [d.tostring() for d in durations]
 
-    if mode in ['validation', 'synthesis']:
+    if mode in ['validation', 'synthesis', 'external_validation']:
         ## Prepare a batch of 'stacked texts' (matrix with number of rows==synthesis batch size, and each row an array of integers)
         stacked_texts = np.zeros((len(texts), hp.max_N), np.int32)
         for i, text in enumerate(texts):

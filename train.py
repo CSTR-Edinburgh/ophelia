@@ -281,10 +281,10 @@ def main_work():
             else:
                 get_and_plot_alignments(hp, epoch - 1, attention_graph, sess, attention_inputs, attention_mels, logdir + "/alignments") # epoch-1 refers to freshly initialised model
 
-        current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference, duration_data=validation_duration_data, validation_labels=validation_labels, position_in_phone_data=position_in_phone_data)
-        acc_validation_scores.append(current_score)
-        validation_epochs.append(epoch)
-        info('validation epoch {0}: {1:0.3f}'.format(epoch, current_score))
+        #current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference, duration_data=validation_duration_data, validation_labels=validation_labels, position_in_phone_data=position_in_phone_data)
+        #acc_validation_scores.append(current_score)
+        #validation_epochs.append(epoch)
+        #info('validation epoch {0}: {1:0.3f}'.format(epoch, current_score))
 
         if hp.sample_analysis:
             outf = open('sample_analysis.txt', 'w')
