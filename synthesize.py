@@ -432,8 +432,8 @@ def world_synthesis(features, outfile, hp, vuv_thresh=0.2, logf0=True):
 def synth_wave(hp, mag, outfile):
     if hp.vocoder == 'griffin_lim':
         wav = spectrogram2wav(hp, mag)
-        #outfile = magfile.replace('.mag.npy', '.wav')
-        #outfile = outfile.replace('.npy', '.wav')
+        if hp.store_synth_features:
+            np.save(outfile.replace('.wav',''), mag)   
         soundfile.write(outfile, wav, hp.sr)
     elif hp.vocoder == 'world':
         world_synthesis(mag, outfile, hp)

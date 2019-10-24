@@ -23,7 +23,8 @@ CONFIG_DEFAULTS = [
     ('epsilon', 0.00000001 , 'ADAM setting - default value from original dctss repo'),
     ('decay_lr', True , 'learning rate decay - default value from original dctss repo'),
     ('squash_output_t2m', True, 'apply sigmoid to output - binary divergence loss will be disabled if False'),
-    ('squash_output_ssrn', True, 'apply sigmoid to output - binary divergence loss will be disabled if False')    
+    ('squash_output_ssrn', True, 'apply sigmoid to output - binary divergence loss will be disabled if False'),
+    ('store_synth_features', False, 'store .npy file of features alongside output .wav file') 
 ]
 
 
