@@ -10,6 +10,7 @@ from __future__ import print_function
 import codecs
 import re
 import os
+import sys
 import glob
 import unicodedata
 import logging 
