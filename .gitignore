@@ -1,2 +1,4 @@
 *.pyc
 *.cfgc
+tool/*
+!tool/bin/sv56demo
