@@ -27,19 +27,12 @@ if (not os.path.isfile(flite_binary)) or (not os.access(flite_binary, os.X_OK)):
 
 
 def simple_merge(phones, wordprons):
-    print wordprons
-    print phones
-    #sys.exit('===ev=reb')
     output = []
     for chunk in phones:
-        print '==='
-        print chunk 
         if chunk=='pau':
             output.append(chunk)
         else:
             while len(chunk) > 0:
-                print '----'
-                print (chunk[:len(wordprons[0])], wordprons[0])
                 if chunk[:len(wordprons[0])] == wordprons[0]:
                     output.append(chunk[:len(wordprons[0])])
                     chunk = chunk[len(wordprons[0]):]  # consume chnk
@@ -47,7 +40,13 @@ def simple_merge(phones, wordprons):
                     del wordprons[0]    ## consume pron
                 else:
                     sys.exit('licnldnv')
-    print [output]
+    
+    output = '|'.join(output[1:-1])
+    output = output.replace('|pau|', ' <,> ')
+    output = output.replace('|', ' <> ')
+    output = '<_START_> ' + output + ' <.> <_END_>'
+    
+    return output
 
 
 def dtw_merge(phones, wordprons):
@@ -61,9 +60,6 @@ def dtw_merge(phones, wordprons):
     phones = ' '.join(phones)
     phones = phones.split(' ')
 
-    print phones
-    print wordprons
-
     def cost(x, y):
         if x==y:
             return 0
@@ -73,10 +69,10 @@ def dtw_merge(phones, wordprons):
             return 1
 
     score, path = dtw.dtw(phones, wordprons, cost)
-    print path
+    #print path
     output= []
     for (phone_i, iso_i) in path:
-        print '%s %s'%(phones[phone_i], wordprons[iso_i])
+        #print '%s %s'%(phones[phone_i], wordprons[iso_i])
         if wordprons[iso_i] == '<>':
             if phones[phone_i] == 'pau':
                 output.append('pau')
@@ -84,16 +80,19 @@ def dtw_merge(phones, wordprons):
                 output.append('<>')
         else:
             output.append(phones[phone_i])
-    print output
 
+    output = '|'.join(output[1:-1])
+    output = output.replace('|pau|', ' <,> ')
+    output = output.replace('|', ' ')
+    output = '<_START_> ' + output + ' <.> <_END_>'
+    return output
 
 def get_flite_phonetisation(textfile, dictionary='cmulex'):
     #return '<_START_> dh ax <> b er ch <_END_>'
 
-
     os.system("sed 's/ /, /g' %s > %s.tmp"%(textfile, textfile))
     comm = "%s -f %s.tmp -ps none"%(flite_binary, textfile)
-    print comm
+    #print comm
     wordphones = subprocess.check_output(comm, shell=True)
     wordprons = re.split('\s*pau\s*', wordphones)
     wordprons = [w.strip() for w in wordprons if w]
@@ -101,24 +100,29 @@ def get_flite_phonetisation(textfile, dictionary='cmulex'):
     # print wordprons  # ['dh ax', 'f ih sh', 't w ih s t ax d', 'ae n d', 't er n d']
 
     comm = "%s -f %s -ps none"%(flite_binary, textfile)
-    print comm
+    #print comm
     phones = subprocess.check_output(comm, shell=True)
     phones = re.split('(\s*pau\s*)', phones)
     phones = [w.strip() for w in phones if w]
 
 
     phones_no_pau = [w for w in phones if w != 'pau']
-    if 0: # ' '.join(phones_no_pau) == ' '.join(wordprons):
-        print 'Pron of words in context matches pronunciation of isolated words - proceed with simple merge'
-        simple_merge(phones, wordprons)
+
+    do_simple_merge =  ' '.join(phones_no_pau) == ' '.join(wordprons)
+
+    if do_simple_merge:
+        #print 'Pron of words in context matches pronunciation of isolated words - proceed with simple merge'
+        phones = simple_merge(phones, wordprons)
     else:
-        print 'Back off to dynamic programming  ;-)'
-        dtw_merge(phones, wordprons)
+        #print 'Back off to dynamic programming  ;-)'
+        phones = dtw_merge(phones, wordprons)
+    return phones
 
 
 
-if 1: ## dev and debug
+ ## dev and debug:--
+if __name__=="__main__":
     os.system('echo "The fish; twisted and turned." > /tmp/test.txt')
     #os.system('echo "I wanted to lead." > /tmp/test.txt')
-    get_flite_phonetisation('/tmp/test.txt', dictionary='cmulex')
+    print get_flite_phonetisation('/tmp/test.txt', dictionary='cmulex')
     sys.exit('evcrv')

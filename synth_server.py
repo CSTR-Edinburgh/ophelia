@@ -18,6 +18,8 @@ from tqdm import tqdm
 HERE = os.path.realpath(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append( HERE + '/script/' )
 
+import sys
+import signal
 import imp
 import codecs
 import glob
@@ -27,7 +29,8 @@ import os
 import stat
 from argparse import ArgumentParser
 
-
+import datetime
+import time
 
 from configuration import load_config
 from synthesize import restore_archived_model_parameters, restore_latest_model_parameters, \
@@ -54,9 +57,7 @@ def stop_clock((start_time, comment), width=40):
 class Synthesiser(object):
     def __init__(self, hp, t2m_epoch=-1, ssrn_epoch=-1):
 
-        #assert hp.vocoder=='griffin_lim', 'Other vocoders than griffin_lim not yet supported'
         assert hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
-
 
         self.hardlimit = 1000000000 ## number of time steps
 
@@ -108,12 +109,12 @@ class Synthesiser(object):
                     txtfile = os.path.join(direc, fname)
                     outfile = txtfile.replace('.txt','.wav')
                     # text = codecs.open(txtfile, encoding='utf8').read()
-                    text = self.process_text(txtfile)
-                    os.system('mv %s %s/archive/'%(txtfile, direc))
-
+                    #text = self.process_text(txtfile)
+                    
                     
 
-                    self.synthesise(text, outfile)
+                    self.synthesise(txtfile, outfile)
+                    os.system('mv %s %s/archive/'%(txtfile, direc))
 
 
 
@@ -125,9 +126,10 @@ class Synthesiser(object):
                 os.system('rm %s'%(fname))
 
 
-    def synthesise(self, text, outfile):
+    def synthesise(self, textfile, outfile):
 
-        text = self.process_text(text)
+        t = start_clock('Text processing...')
+        text = self.process_text(textfile)
 
         if self.hp.input_type=='letters':
             textin = text_normalize(text, self.hp)
@@ -140,29 +142,38 @@ class Synthesiser(object):
 
         ## text to int array of appropriate length and dummy batch dimension
         stacked_text = np.zeros((1, self.hp.max_N), np.int32)
-        if len(textin) >  self.hp.max_N:
+        if len(textin) > self.hp.max_N:
+            print(len(textin))
             textin = textin[:self.hp.max_N]
-            print('warning: text too long - trim end!')
+            # print(len(textin))
+            # print('warning: text too long - trim end!')
+        text_lengths = np.array([len(textin)])
         stacked_text[0, :len(textin)] = textin
         L = stacked_text
+        stop_clock(t)
 
-        text_lengths = get_text_lengths(L)
 
 
+        t = start_clock('Encoding text....')
         K, V = encode_text(self.hp, L, self.g1, self.sess)
+        stop_clock(t)
+
+
+        t = start_clock('Decoding loop....')
         Y, lengths, alignments = synth_codedtext2mel(self.hp, K, V, text_lengths, self.g1, self.sess)
+        stop_clock(t)
 
+        t = start_clock('SSRN...')
         Z = synth_mel2mag(self.hp, Y, self.g2, self.sess)
-
-
         assert self.hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
-
-
         mag = Z[0,:,:]  ### first item in batch is spectrogram
         mag = mag[:lengths[0]*self.hp.r,:]  ### trim to generated length
+        stop_clock(t)
 
+
+        t = start_clock('Waveform generation...')
         synth_wave(self.hp, mag, outfile)
-
+        stop_clock(t)
 
 
 
@@ -178,11 +189,16 @@ class HausaSynthesiser(Synthesiser):
 
 class CMULexSynthesiser(Synthesiser):
     def process_text(self, txtfile):
-        #sys.exit('licbnwsdibvilsfblv')
-
         phones = get_flite_phonetisation(txtfile, dictionary='cmulex')    
-        print (phones)
-        sys.exit('licbnwsdibvilsfblv')
+        return phones
+        
+
+def signal_handler(signal, frame):
+    print("\nStopping the server")
+    sys.exit(0)
+
+
+
 
 
 def main_work():
@@ -213,27 +229,20 @@ def main_work():
     if opts.limit:
         s.hardlimit = opts.limit
 
-    if 1: ## for debugging
+    if 0: ## for debugging
         os.system('echo "The fish twisted and turned." > /tmp/test.txt')
         s.synthesise('/tmp/test.txt', '/disk/scratch/script_project/newshack/testsynth3/utt01.wav')
-        # s.synthesise('<_START_> dh ax <> b er ch <> k ax n uw <> s l ih d <> aa n <> dh ax <> s m uw dh <> p l ae ng k s <.> <_END_>', \
-                # '/disk/scratch/script_project/newshack/testsynth3/utt01.wav') # '/group/project/script_tts/data/synth_service')
-        # s.synthesise('<_START_> D @ <> f I S <> t w I s t I d <> a n d <> t @@ n d <.> <_END_>', '/disk/scratch/script_project/newshack/testsynth3') # '/group/project/script_tts/data/synth_service')
-        #s.synthesise(u'The fish twisted and turned.', '/group/project/script_tts/data/synth_service/test.wav')
         sys.exit('qlebfcwivbrev88888')
 
-    try:
-        while True:
-            s.remove_old_wave_files(opts.synthdir)
-            s.check_for_new_files_and_synth(opts.synthdir)
-            os.system('sleep 0.5')
-            os.system('date')
-            print('Listening for new .txt files with no .wav associated at %s'%(opts.synthdir))
-            #print ('!')
-    except KeyboardInterrupt:
-        pass
+    # https://stackoverflow.com/questions/18994912/ending-an-infinite-while-loop
+    signal.signal(signal.SIGINT, signal_handler)
 
-
+    while True:
+        s.remove_old_wave_files(opts.synthdir)
+        s.check_for_new_files_and_synth(opts.synthdir)
+        time.sleep(0.5)
+        print( datetime.datetime.now() )
+        print('Listening for new .txt files with no .wav associated at %s'%(opts.synthdir))
 
 
 if __name__=="__main__":
