@@ -55,7 +55,7 @@ def stop_clock((start_time, comment), width=40):
 
 
 class Synthesiser(object):
-    def __init__(self, hp, t2m_epoch=-1, ssrn_epoch=-1):
+    def __init__(self, hp, t2m_epoch=-1, ssrn_epoch=-1, controllable=False):
 
         assert hp.vocoder in ['griffin_lim', 'world'], 'Other vocoders than griffin_lim/world not yet supported'
 
@@ -84,6 +84,8 @@ class Synthesiser(object):
         else:
             ssrn_epoch = restore_latest_model_parameters(self.sess, hp, 'ssrn')
 
+        self.controllable = controllable
+
         print('Finished loading synthesis model')
 
 
@@ -111,10 +113,27 @@ class Synthesiser(object):
                     # text = codecs.open(txtfile, encoding='utf8').read()
                     #text = self.process_text(txtfile)
                     
-                    
+                    if self.controllable:
+                        try:
+                            vecfile = txtfile.replace('.txt','.vec')
+                            control_vector = np.loadtxt(vecfile).tolist()
+                            print('!!!!!!!Found vecfile %s'%(vecfile))
+                        except:
+                            control_vector = [0.0, 0.0]
+                            print('!!!!!!!Trouble with vecfile %s'%(vecfile))
 
-                    self.synthesise(txtfile, outfile)
-                    os.system('mv %s %s/archive/'%(txtfile, direc))
+                        ## fix bounds of control vector:-
+                        control_vector = np.clip(np.array(control_vector), -1.0, 1.0).tolist()
+
+
+                        self.synthesise(txtfile, outfile, control_vector=control_vector)
+                        os.system('mv %s %s/archive/'%(txtfile, direc))
+                        os.system('mv %s %s/archive/'%(vecfile, direc))
+
+                    else:
+                        self.synthesise(txtfile, outfile)
+                        os.system('mv %s %s/archive/'%(txtfile, direc))
+
 
 
 
@@ -126,7 +145,31 @@ class Synthesiser(object):
                 os.system('rm %s'%(fname))
 
 
-    def synthesise(self, textfile, outfile):
+    def synthesise(self, textfile, outfile, control_vector=[]):
+
+
+        print('!!!!!!!!! Synth with control vector %s'%(control_vector) )
+
+        if control_vector:
+            ## Add control vector -- assume this is added at decoder input only!
+            #control_vector = [-1.0, -1.0]
+
+            ## Overwrite row no. 1 (arbitrary choice) with new control vector:
+            for vari in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'Text2Mel'):
+                if vari.name == 'Text2Mel/AudioDec/embed_2/lookup_table:0':
+                    old_value = self.sess.run(vari)
+                    new_value = np.zeros(old_value.shape)
+                    new_value[1,:] = control_vector
+
+                    assign_op = vari.assign(new_value)
+                    self.sess.run(assign_op)  # or `assign_op.op.run()`  ## see https://stackoverflow.com/questions/34220532/how-to-assign-a-value-to-a-tensorflow-variable
+
+            ## Make batch of speaker data looking up row 1 of the embedding table:
+            speaker_data = np.ones((1, 1), np.int32)
+        else:
+            speaker_data = None
+
+        #print (embedding)
 
         t = start_clock('Text processing...')
         text = self.process_text(textfile)
@@ -155,12 +198,12 @@ class Synthesiser(object):
 
 
         t = start_clock('Encoding text....')
-        K, V = encode_text(self.hp, L, self.g1, self.sess)
+        K, V = encode_text(self.hp, L, self.g1, self.sess, speaker_data=speaker_data)
         stop_clock(t)
 
 
         t = start_clock('Decoding loop....')
-        Y, lengths, alignments = synth_codedtext2mel(self.hp, K, V, text_lengths, self.g1, self.sess)
+        Y, lengths, alignments = synth_codedtext2mel(self.hp, K, V, text_lengths, self.g1, self.sess, speaker_data=speaker_data)
         stop_clock(t)
 
         t = start_clock('SSRN...')
@@ -210,7 +253,8 @@ def main_work():
     a = ArgumentParser()
     a.add_argument('-c', dest='config', required=True, type=str)
     a.add_argument('-dir', dest='synthdir', required=True, type=str)
-    a.add_argument('-limit', default=0, type=int)    
+    a.add_argument('-limit', default=0, type=int)   
+    a.add_argument('-controllable', action='store_true', default=False) 
     opts = a.parse_args()
     
     # ===============================================
@@ -219,20 +263,29 @@ def main_work():
 
     hp.language = 'en_cmulex'
 
+
+
     if hp.language=='en_cmulex':
-        s = CMULexSynthesiser(hp)
+        s = CMULexSynthesiser(hp, controllable=opts.controllable)
     elif hp.language=='hausa':
-        s = HausaSynthesiser(hp)
+        s = HausaSynthesiser(hp, controllable=opts.controllable)
     else:
-        s = Synthesiser(hp)
+        s = Synthesiser(hp, controllable=opts.controllable)
 
     if opts.limit:
         s.hardlimit = opts.limit
 
-    if 0: ## for debugging
+    if 0: ## for debugging basic system
         os.system('echo "The fish twisted and turned." > /tmp/test.txt')
-        s.synthesise('/tmp/test.txt', '/disk/scratch/script_project/newshack/testsynth3/utt01.wav')
+        s.synthesise('/tmp/test.txt', '/afs/inf.ed.ac.uk/group/cstr/projects/scar/SCRIPT/temp/stest/utt01.wav')
         sys.exit('qlebfcwivbrev88888')
+
+
+    if 0: ## for debugging extended system with control vectors 
+        os.system('echo "The fish twisted and turned." > /tmp/test.txt')
+        s.synthesise('/tmp/test.txt', '/afs/inf.ed.ac.uk/group/cstr/projects/scar/SCRIPT/temp/stest/utt04.wav', control_vector=[-0.8, -0.5]) # [0.8, -0.5])
+        sys.exit('vksfj vksfe298f8')
+
 
     # https://stackoverflow.com/questions/18994912/ending-an-infinite-while-loop
     signal.signal(signal.SIGINT, signal_handler)

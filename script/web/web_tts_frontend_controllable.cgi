@@ -8,7 +8,7 @@ import sys, os, re, glob, urllib
 import cgitb; cgitb.enable() ## for debugging
 import time
 
-this_script = 'http://homepages.inf.ed.ac.uk/cgi/owatts/tts_demo_01.cgi'
+this_script = 'http://homepages.inf.ed.ac.uk/cgi/owatts/tts_demo_control_01.cgi'
 outdir = '/public/homepages/owatts/web/tts_demo_01/output/'                   # /group/project/script_tts/html/'
 outdir_url = 'http://homepages.inf.ed.ac.uk/owatts/tts_demo_01/output/'
 
@@ -69,7 +69,8 @@ def print_textbox_plus_audio(text, wavefile=''):
     <body>
     <form action="%s" method="post">  
       <input id="text" type="text" size="40" placeholder="%s", name="text_to_synth">
-      <input id="password" type="text" size="8" placeholder="password" name="password">
+      <input id="control_vector_1" type="text" size="8" placeholder="0.0" name="control_vector_1">
+      <input id="control_vector_2" type="text" size="8" placeholder="0.0" name="control_vector_2">      
       <button id="button" name="synthesize">Speak</button>
     </form>
     <p id="message"></p>'''%(this_script, text)
@@ -86,13 +87,14 @@ if data=={}:
 
 
 text = urllib.unquote_plus(data.get('text_to_synth', 'example'))
-password = data.get('password', '')
 
-password_list = [''] # ['9pw8qf']
-if password not in password_list:
-    os.system('sleep 3')
-    print_initial_textbox()
-    sys.exit(0)    
+# password = data.get('password', '')
+
+# password_list = [''] # ['9pw8qf']
+# if password not in password_list:
+#     os.system('sleep 3')
+#     print_initial_textbox()
+#     sys.exit(0)    
 
 timestr = time.strftime("%Y%m%d-%H%M%S")
 
@@ -101,6 +103,21 @@ fname = unique_file(os.path.join(outdir, timestr + '.txt'))
 f = open(fname, 'w')
 f.write(text)
 f.close()
+
+## Write control vector to text file:-
+cv1 = urllib.unquote_plus(data.get('control_vector_1', '0.0'))
+cv2 = urllib.unquote_plus(data.get('control_vector_2', '0.0'))
+## default is empty strings - replace these
+if not cv1:
+    cv1 = '0.0'
+if not cv2:
+    cv2 = '0.0'
+
+vec_fname = fname.replace('.txt','.vec')
+f = open(vec_fname, 'w')
+f.write('%s %s'%(cv1, cv2))
+f.close()
+
 
 wavfile = fname.replace('.txt','.wav')
 
@@ -117,6 +134,7 @@ if 0: ## debug
     print data
     print
     print wavurl
+    print 'BLAHHH!!!!'
     print_html_footer()
     sys.exit(0)
 
