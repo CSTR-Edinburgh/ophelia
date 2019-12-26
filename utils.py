@@ -31,11 +31,7 @@ def get_spectrograms(hp, fpath):
       mag: A 2d array of shape (T, 1+n_fft/2) and dtype of float32.
     '''
     # Loading sound file
-    try:
-        y, sr = librosa.load(fpath, sr=hp.sr)
-    except ValueError:
-        print('The sound file {} seems to be too short'.format(fpath))
-        return None, None
+    y, sr = librosa.load(fpath, sr=hp.sr)
 
     # Trimming
     if hp.trim_before_spectrogram_extraction:
