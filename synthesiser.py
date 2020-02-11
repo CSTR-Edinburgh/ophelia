@@ -217,8 +217,16 @@ class Synthesiser(object):
         synth_wave(self.hp, mag, outfile)
         stop_clock(t)
 
-### Here!!!!!
-    #def tts(self, text, control_vector=[]):
+    def tts(self, text, control_vector=[]):
+        #### HERE!!!! TODO: less hacking reading.writing?
+        temp_text = '/tmp/temp.txt'
+        temp_wave = '/tmp/temp.wav'
+        f = codecs.open(temp_text, 'w', encoding='utf8')
+        f.write(text)
+        f.close()
+        self.synthesise(temp_text, temp_wave, control_vector=control_vector)
+        return temp_wave
+
 
 
 
