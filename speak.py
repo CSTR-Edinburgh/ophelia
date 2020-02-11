@@ -41,6 +41,12 @@ from festival.flite import get_flite_phonetisation
 
 from architectures import Text2MelGraph, SSRNGraph
 
+
+
+from synthesiser import Synthesiser, CMULexSynthesiser, HausaSynthesiser
+from libutil import basename, safe_makedir
+
+
 def file_age_in_seconds(pathname):
     return time.time() - os.stat(pathname)[stat.ST_MTIME]
 
@@ -68,50 +74,33 @@ def main_work():
 
     a = ArgumentParser()
     a.add_argument('-c', dest='config', required=True, type=str)
-    a.add_argument('-dir', dest='synthdir', required=True, type=str)
-    a.add_argument('-limit', default=0, type=int)   
+    a.add_argument('-i', dest='textdir', required=True, type=str)    
+    a.add_argument('-o', dest='synthdir', required=True, type=str)
     a.add_argument('-controllable', action='store_true', default=False) 
+
     opts = a.parse_args()
     
     # ===============================================
     
     hp = load_config(opts.config)
 
-    hp.language = 'en_cmulex'
-
-
-
     if hp.language=='en_cmulex':
-        s = CMULexSynthesiser(hp, controllable=opts.controllable)
+        s = CMULexSynthesiser(hp, controllable=opts.controllable, t2m_epoch=1000, ssrn_epoch=1000) ## TODO
     elif hp.language=='hausa':
-        s = HausaSynthesiser(hp, controllable=opts.controllable)
+        s = HausaSynthesiser(hp, controllable=opts.controllable, t2m_epoch=1000, ssrn_epoch=1000) ## TODO
     else:
         s = Synthesiser(hp, controllable=opts.controllable)
 
-    if opts.limit:
-        s.hardlimit = opts.limit
+    safe_makedir(opts.synthdir)
 
-    if 0: ## for debugging basic system
-        os.system('echo "The fish twisted and turned." > /tmp/test.txt')
-        s.synthesise('/tmp/test.txt', '/afs/inf.ed.ac.uk/group/cstr/projects/scar/SCRIPT/temp/stest/utt01.wav')
-        sys.exit('qlebfcwivbrev88888')
+    for textfile in sorted(glob.glob(opts.textdir + '/*.txt')):
+        # base = os.path.split(textfile)[-1].replace('.txt','.wav')
+        outfile = opts.synthdir + '/' + basename(textfile) + '.wav'  
+        s.synthesise(textfile, outfile)
 
-
-    if 0: ## for debugging extended system with control vectors 
-        os.system('echo "The fish twisted and turned." > /tmp/test.txt')
-        s.synthesise('/tmp/test.txt', '/afs/inf.ed.ac.uk/group/cstr/projects/scar/SCRIPT/temp/stest/utt04.wav', control_vector=[-0.8, -0.5]) # [0.8, -0.5])
-        sys.exit('vksfj vksfe298f8')
-
-
-    # https://stackoverflow.com/questions/18994912/ending-an-infinite-while-loop
-    signal.signal(signal.SIGINT, signal_handler)
-
-    while True:
-        s.remove_old_wave_files(opts.synthdir)
-        s.check_for_new_files_and_synth(opts.synthdir)
-        time.sleep(0.5)
-        print( datetime.datetime.now() )
-        print('Listening for new .txt files with no .wav associated at %s'%(opts.synthdir))
+    # while True:
+    #     s.remove_old_wave_files(opts.synthdir)
+    #     s.check_for_new_files_and_synth(opts.synthdir)
 
 
 if __name__=="__main__":
