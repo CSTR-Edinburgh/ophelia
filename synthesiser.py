@@ -218,7 +218,7 @@ class Synthesiser(object):
         stop_clock(t)
 
     def tts(self, text, control_vector=[]):
-        #### HERE!!!! TODO: less hacking reading.writing?
+        #### HERE!!!! TODO: less hacky reading/writing?
         temp_text = '/tmp/temp.txt'
         temp_wave = '/tmp/temp.wav'
         f = codecs.open(temp_text, 'w', encoding='utf8')

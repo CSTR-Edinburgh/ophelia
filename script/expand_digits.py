@@ -358,6 +358,7 @@ def txt_to_tokens(text):
 
     tokens = regex.split('([\p{P}\p{Z}]+)', text)   # P - punctuation      Z - separators (incl. space)
     tokens = [t for t in tokens if t != '']
+
     return tokens
 
 
@@ -386,8 +387,11 @@ def norm_hausa(text):
             output.append(expanded)
         else:
             output.append(token)
-        #print output
-    return ''.join(output)
+
+    output = u''.join(output)
+
+    return output
+
 
 def test():
     for n in [u'0', u'04', u'1', u'10', u'100', u'105', u'11', u'110', u'12', u'120', u'13', u'14', u'15', u'150', u'16', u'17', u'175', u'1780', u'18', u'19', u'194', u'1947', u'1957', u'1991', u'1996', u'1998', u'2', u'20', u'200', u'2000', u'2004', u'2005', u'2008', u'2009', u'2010', u'2011', u'2012', u'2013', u'2014', u'2015', u'2016', u'2018', u'2019', u'2020', u'2025', u'2026', u'2030', u'2050', u'2070', u'21', u'22', u'23', u'230', u'237', u'24', u'25', u'250', u'26', u'260', u'261', u'27', u'28', u'29', u'3', u'30', u'300', u'31', u'318', u'326', u'33', u'34', u'35', u'36', u'37', u'38', u'39', u'4', u'40', u'400', u'43', u'44', u'47', u'48', u'49', u'5', u'50', u'52', u'53', u'57', u'59', u'6', u'60', u'61', u'62', u'66', u'67', u'68', u'7', u'70', u'713', u'72', u'74', u'75', u'8', u'80', u'800', u'814', u'82', u'9', u'90', u'95', u'96', u'98']:
