@@ -1,14 +1,20 @@
 
 
 '''
-Install Flite for Ophelia like this:
+## Install Flite for Ophelia like this:
 
 cd ./ophelia/tool
 git clone http://github.com/festvox/flite
 cd flite
 ./configure
 make
+
+## Alternatively on Ubuntu install globally with package manager, do e.g.:
+
+sudo apt-get install -y flite
+
 '''
+
 import sys
 import os
 import re
@@ -17,13 +23,19 @@ import subprocess
 from mcd import dtw  ## Matt Shannon's mcd is already a required part of the environment
                      ## so we might as well use it for aligning phones... 
 
+from distutils.spawn import find_executable
+
 HERE = os.path.realpath(os.path.abspath(os.path.dirname(__file__)))
 flite_binary = os.path.realpath(os.path.abspath(HERE + '/../../tool/flite/bin/flite'))
 
 if (not os.path.isfile(flite_binary)) or (not os.access(flite_binary, os.X_OK)):
-    print '\n\n\n\nFlite binary does not exist at %s or is not executable'%(flite_binary)
-    print 'See installation instructions at top of %s\n\n\n\n'%(__file__)
-    sys.exit('!!!!!')
+    if find_executable('flite'):
+        flite_binary = 'flite'
+        print('Use globally installed flite...')
+    else:
+        print '\n\n\n\nFlite binary does not exist at %s or is not executable'%(flite_binary)
+        print 'See installation instructions at top of %s\n\n\n\n'%(__file__)
+        sys.exit('!!!!!')
 
 
 def simple_merge(phones, wordprons):

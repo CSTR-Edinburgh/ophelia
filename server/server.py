@@ -30,9 +30,12 @@ def index():
     return render_template('index.html')
 
 
-@app.route('/api/tts', methods=['GET'])
+@app.route('/api/tts', methods=['GET', 'POST'])
 def tts():
-    text = request.args.get('text')
+    if request.method == 'POST':
+        text = request.values.get('text') 
+    else:
+        text = request.args.get('text')
     print(" > Model input: {}".format(text))
     data = synthesizer.tts(text)
     return send_file(data, mimetype='audio/wav')

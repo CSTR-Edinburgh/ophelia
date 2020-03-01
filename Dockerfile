@@ -6,9 +6,22 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+
+RUN apt update
+RUN apt install python-minimal -y
+RUN apt install python-pip -y
+
+RUN apt-get install libsndfile1 -y
+
+RUN apt-get install -y flite
+
 # Copy Source later to enable dependency caching
 COPY requirements_CPU.txt /srv/app/
-RUN pip install -r requirements_CPU.txt
+COPY requirements_MCD.txt /srv/app/
+# This messing around is due to pip processing requirements in alphabetical order...
+RUN pip2 install -r requirements_CPU.txt
+RUN pip2 install -r requirements_MCD.txt
+RUN pip2 install -r requirements_CPU.txt
 
 COPY . /srv/app
 
