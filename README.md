@@ -8,7 +8,7 @@ A modified version of Kyubyong Park's [dc_tts repository](https://github.com/Kyu
 Go to a suitable location and clone repository:
 
 ```
-git clone https://github.com/oliverwatts/ophelia.git
+https://github.com/CSTR-Edinburgh/ophelia.git
 cd ophelia
 CODEDIR=`pwd`
 ```
