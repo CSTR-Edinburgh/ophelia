@@ -24,9 +24,15 @@ CONFIG_DEFAULTS = [
     ('decay_lr', True , 'learning rate decay - default value from original dctss repo'),
     ('squash_output_t2m', True, 'apply sigmoid to output - binary divergence loss will be disabled if False'),
     ('squash_output_ssrn', True, 'apply sigmoid to output - binary divergence loss will be disabled if False'),
-    ('store_synth_features', False, 'store .npy file of features alongside output .wav file') 
+    ('store_synth_features', False, 'store .npy file of features alongside output .wav file'),
+    ('turn_off_monotonic_for_synthesis',False, 'turns off FIA mechanism for synthesis'),
+    ('lw_cdp',0.0,''),
+    ('lw_ain',0.0,''),
+    ('lw_aout',0.0,''),
+    ('attention_guide_fa',False,'use attention guide as target - MSE attention loss'),
+    ('select_central',False,'use only centre phones from Merlin labels'),
+    ('MerlinTextEncWithPhoneEmbedding',False,'use Merlin labels and phone embeddings as input of TextEncoder')
 ]
-
 
 ## Intended to have hp as a module, but this doesn't allow pickling and therefore 
 ## use in parallel processing. So, convert module into an object of arbitrary type 

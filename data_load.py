@@ -24,6 +24,19 @@ from utils import load_spectrograms, end_pad_for_reduction_shape_sync, \
 
 from tqdm import tqdm
 
+def get_labels_indices(num_ind=416):
+
+    if num_ind==190:
+        # indices refering to centre phone -  see question file: 
+        # https://github.com/CSTR-Edinburgh/merlin/blob/master/misc/questions/questions-radio_dnn_416.hed
+        central_ind = np.array([1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,0,0,0,1,1,1,1,0,0,1,1,1])
+    else: # 48
+        # indices refering to centre phone ID -  see question file: 
+        # https://github.com/CSTR-Edinburgh/merlin/blob/master/misc/questions/questions-radio_dnn_416.hed
+        central_ind = np.array([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
+
+    return central_ind
+
 def load_vocab(hp):
     vocab = hp.vocab # default
     if 'speaker_dependent_phones' in hp.multispeaker:
@@ -163,7 +176,7 @@ def load_data(hp, mode="train"):
         if hp.merlin_label_dir: ## only get shape here -- get the data later
             label_length, label_dim = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")).shape
             label_lengths.append(label_length)
-            assert label_dim==hp.merlin_lab_dim
+            #assert label_dim==hp.merlin_lab_dim
 
         if hp.use_external_durations:
             assert len(fields) >= 6, fields            
@@ -427,7 +440,12 @@ def get_batch(hp, batchsize):
         if hp.attention_guide_dir:
             def load_attention(fpath):
                 attention_guide_file = "{}/{}".format(hp.attention_guide_dir, basename(fpath)+".npy")
-                attention_guide = read_floats_from_8bit(attention_guide_file)
+                if hp.attention_guide_fa: # To use the MSE Attention loss with FA attention matrix
+                    attention_guide = np.load(attention_guide_file)
+                    attention_guide = np.transpose(attention_guide) # FA attention is transposed
+                else:
+                    attention_guide = read_floats_from_8bit(attention_guide_file)
+                
                 return fpath, attention_guide
             _, attention_guide = tf.py_func(load_attention, [fpath], [tf.string, tf.float32]) # py_func wraps a python function and use it as a TensorFlow op.
 
@@ -435,6 +453,11 @@ def get_batch(hp, batchsize):
             def load_merlin_label(fpath):
                 label_file = "{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")
                 label = np.load(label_file) ## TODO: could use read_floats_from_8bit format
+                label = np.float32(label)
+                if hp.select_central:
+                    central_ind = get_labels_indices(hp.merlin_lab_dim)
+                    label = label[:,central_ind==1]
+                assert(label.shape[1]==hp.merlin_lab_dim)
                 return fpath, label
             _, merlin_label = tf.py_func(load_merlin_label, [fpath], [tf.string, tf.float32]) # py_func wraps a python function and use it as a TensorFlow op.
             merlin_label.set_shape((None, hp.merlin_lab_dim))  ## will be phones x n_linguistic_features

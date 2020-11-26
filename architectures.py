@@ -5,7 +5,7 @@ Based on code by kyubyong park at https://www.github.com/kyubyong/dc_tts
 '''
 
 from data_load import get_batch, load_vocab
-from networks import TextEnc, AudioEnc, AudioDec, Attention, SSRN, FixedAttention, LinearTransformLabels
+from networks import TextEnc, AudioEnc, AudioDec, Attention, SSRN, FixedAttention, LinearTransformLabels, MerlinTextEnc
 import tensorflow as tf
 from utils import get_global_attention_guide, learning_rate_decay
 
@@ -198,6 +198,10 @@ class Text2MelGraph(Graph):
                 assert self.hp.merlin_label_dir
                 #sys.exit('Not implemented: hp.text_encoder_type=="minimal_feedforward"')
                 self.K = self.V = LinearTransformLabels(self.hp, self.merlin_label, training=self.training, reuse=self.reuse)
+            elif self.hp.text_encoder_type=='MerlinTextEnc':
+                assert self.hp.merlin_label_dir
+                with tf.variable_scope("MerlinTextEnc"):
+                    self.K, self.V = MerlinTextEnc(self.hp, self.L, self.merlin_label, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)  # (N, Tx, e)
             else: ## default DCTTS text encoder
                 with tf.variable_scope("TextEnc"):
                     self.K, self.V = TextEnc(self.hp, self.L, training=self.training, speaker_codes=self.speakers, reuse=self.reuse)  # (N, Tx, e)
@@ -251,14 +255,71 @@ class Text2MelGraph(Graph):
             print("binary divergence loss disabled because squash_output_t2m==False")    
 
         
-        # guided_attention loss
-        self.A = tf.pad(self.alignments, [(0, 0), (0, hp.max_N), (0, hp.max_T)], mode="CONSTANT", constant_values=-1.)[:, :hp.max_N, :hp.max_T]
-        if hp.attention_guide_dir:
-            self.gts = tf.pad(self.gts, [(0, 0), (0, hp.max_N), (0, hp.max_T)], mode="CONSTANT", constant_values=1.0)[:, :hp.max_N, :hp.max_T] ## TODO: check adding penalty here (1.0 is the right thing)               
-        self.attention_masks = tf.to_float(tf.not_equal(self.A, -1))
-        self.loss_att = tf.reduce_sum(tf.abs(self.A * self.gts) * self.attention_masks)    ## (B, Letters, Frames) * (Letters, Frames) -- Broadcasting first adds singleton dimensions to the left until rank is matched. 
-        self.mask_sum = tf.reduce_sum(self.attention_masks)
-        self.loss_att /= self.mask_sum
+        if hp.attention_guide_fa is False: # Use guided attention loss
+            print("Guided attention loss!!")
+            # guided_attention loss
+            ## padding happens bcs alignemnts dimension are not max_N and max_T but batch dependents
+            self.A = tf.pad(self.alignments, [(0, 0), (0, hp.max_N), (0, hp.max_T)], mode="CONSTANT", constant_values=-1.)[:, :hp.max_N, :hp.max_T] 
+            ## att guides in dir needs padding to max_T and max_N bcs attention matrix sizes in guide dir are sentence dependent
+            if hp.attention_guide_dir: 
+                self.gts = tf.pad(self.gts, [(0, 0), (0, hp.max_N), (0, hp.max_T)], mode="CONSTANT", constant_values=1.0)[:, :hp.max_N, :hp.max_T] ## TODO: check adding penalty here (1.0 is the right thing)
+            self.attention_masks = tf.to_float(tf.not_equal(self.A, -1)) # casts the True and False values to 1 and 0.
+            self.loss_att = tf.reduce_sum(tf.abs(self.A * self.gts) * self.attention_masks)    ## (B, Letters, Frames) * (Letters, Frames) -- Broadcasting first adds singleton dimensions to the left until rank is matched. 
+            self.mask_sum = tf.reduce_sum(self.attention_masks)
+            self.loss_att /= self.mask_sum
+            # this means that attention loss is calculated over the NxT space of the particular batch (not over max_N and max_T, the padding happens to bring both alignment and gts to same dimension for matrix multiplication) 
+        else: ## Use MSE attention loss - treat guide as target
+            print("MSE attention loss!!")
+            self.A = tf.pad(self.alignments, [(0, 0), (0, hp.max_N), (0, hp.max_T)], mode="CONSTANT", constant_values=-1.)[:, :hp.max_N, :hp.max_T] 
+            self.attention_masks = tf.to_float(tf.not_equal(self.A, -1))
+            self.mask_sum = tf.reduce_sum(self.attention_masks)
+            self.A = tf.pad(self.alignments, [(0, 0), (0, hp.max_N), (0, hp.max_T)], mode="CONSTANT", constant_values=0.0)[:, :hp.max_N, :hp.max_T] 
+            if hp.attention_guide_dir: 
+                self.gts = tf.pad(self.gts, [(0, 0), (0, hp.max_N), (0, hp.max_T)], mode="CONSTANT", constant_values=0.0)[:, :hp.max_N, :hp.max_T] ## TODO: check adding penalty here (1.0 is the right thing) - CVB: correct bcs guides are 1 in the bounderies                    
+            self.loss_att = tf.reduce_sum( (self.A - self.gts) * (self.A - self.gts) )
+            self.loss_att /= self.mask_sum
+
+        #### Other attention losses - CDP, Ain and Aout (see "Confidence through attention", http://arxiv.org/abs/1710.03743)
+        if hp.lw_cdp!=0.0 or hp.lw_ain!=0.0 or hp.lw_aout!=0.0 :
+            att_per_input = tf.reduce_sum(self.alignments,axis=2) # keepdims=True
+
+            # CDP
+            ones = tf.ones_like(att_per_input)
+            self.loss_cdp = tf.reduce_sum( tf.log ( ones + ( ones - att_per_input) ** 2 ) )
+            self.loss_cdp /= tf.reduce_sum( ones )
+
+            # Ain entropy
+            Aaxis 		   = 2 
+            Amat 		   = self.alignments # B x Nbatch x Tbatch
+            num_phones     = tf.reduce_sum( tf.ones_like ( tf.reduce_sum(Amat,axis=2) ) ) # remove frame dim
+            num_frames     = tf.reduce_sum(Amat,axis=0) # remove batch dim
+            num_frames     = tf.reduce_sum( tf.ones_like ( tf.reduce_sum(num_frames,axis=0))) # remove phone dim
+            
+            norm_per_token = tf.reduce_sum(Amat,axis=Aaxis,keepdims=True)
+            Amat           = Amat / norm_per_token
+            #Amat           = tf.where( tf.not_equal(norm_per_token, 0) , Amat / norm_per_token , tf.zeros_like(Amat))
+            Amat           = tf.where( tf.is_nan(Amat) , tf.zeros_like(Amat), Amat)
+            Entropy        = tf.where( tf.not_equal(Amat, 0) , Amat * tf.log(Amat), tf.zeros_like(Amat))
+            self.loss_Ain  = tf.reduce_sum(Entropy)
+            self.loss_Ain /= num_phones
+            self.loss_Ain /= tf.log(num_frames)
+            self.loss_Ain *= -1.0
+
+            # Aout
+            Aaxis = 1 
+            Amat 		   = self.alignments # B x Nbatch x Tbatch
+            num_frames     = tf.reduce_sum( tf.ones_like ( tf.reduce_sum(Amat,axis=1) ) ) # remove phone dim
+            num_phones     = tf.reduce_sum(Amat,axis=0) # remove batch dim
+            num_phones     = tf.reduce_sum( tf.ones_like ( tf.reduce_sum(num_phones,axis=1))) # remove frame dim
+            
+            norm_per_token  = tf.reduce_sum(Amat,axis=Aaxis,keepdims=True)
+            Amat            = Amat / norm_per_token
+            Entropy         = tf.where( tf.not_equal(Amat, 0) , Amat * tf.log(Amat), tf.zeros_like(Amat))
+            self.loss_Aout  = tf.reduce_sum(Entropy)
+            self.loss_Aout /= num_frames
+            self.loss_Aout /= tf.log(num_phones)
+            self.loss_Aout *= -1.0
+        ######
 
         # total loss
         try:  ## new way to configure loss weights:- TODO: ensure all configs use new pattern, and remove 'except' branch
@@ -273,11 +334,25 @@ class Text2MelGraph(Graph):
             self.lw_bd1 = hp.lw_bd1
             self.lw_att = hp.lw_att     
             self.lw_t2m_l2 = self.hp.lw_t2m_l2                    
+            
+            self.lw_cdp = hp.lw_cdp
+            self.lw_ain = hp.lw_ain
+            self.lw_aout = hp.lw_aout
+
             self.loss = (self.lw_mel * self.loss_mels) + (self.lw_bd1 * self.loss_bd1) + (self.lw_att * self.loss_att) + (self.lw_t2m_l2 * self.loss_l2)
 
-        # loss_components attribute is used for reporting to log (osw)
-        self.loss_components = [self.loss, self.loss_mels, self.loss_bd1, self.loss_att, self.loss_l2]
+            if ( self.lw_cdp != 0.0 ):
+                  self.loss += ( self.loss_cdp * self.lw_cdp )
+            if ( self.lw_ain != 0.0 ):
+                  self.loss += ( self.loss_Ain * self.lw_ain )
+            if ( self.lw_aout != 0.0 ):
+                  self.loss += ( self.loss_Aout * self.lw_aout )
 
+        # loss_components attribute is used for reporting to log (osw)
+        if hp.lw_cdp!=0.0 or hp.lw_ain!=0.0 or hp.lw_aout!=0.0 :
+            self.loss_components = [self.loss, self.loss_mels, self.loss_bd1, self.loss_att, self.loss_l2, self.loss_cdp, self.loss_Ain, self.loss_Aout]
+        else:
+            self.loss_components = [self.loss, self.loss_mels, self.loss_bd1, self.loss_att, self.loss_l2]
 
         # summary used for reporting to tensorboard (kp)
         tf.summary.scalar('train/loss_mels', self.loss_mels)

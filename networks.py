@@ -12,6 +12,112 @@ from __future__ import print_function
 from modules import *
 import tensorflow as tf
 
+def MerlinTextEnc(hp, L, merlin_label, training=True, speaker_codes=None, reuse=None):
+    '''
+    Args:
+      L: Text inputs. (B, N)
+
+    Return:
+        K: Keys. (B, N, d)
+        V: Values. (B, N, d)
+    '''
+    lcc = 0 # default
+    if 'learn_channel_contributions' in hp.multispeaker:
+        lcc = hp.nspeakers
+
+    i = 1
+
+    tensor = LinearTransformLabels(hp, merlin_label, training=training, reuse=reuse, out_dim=hp.e, i=1)
+    i += 1
+    # tensor = embed(L,
+    #                vocab_size=len(hp.vocab),
+    #                num_units=hp.e,
+    #                scope="embed_{}".format(i), reuse=reuse); i += 1
+
+    if hp.MerlinTextEncWithPhoneEmbedding:
+        tensorE = embed(L,
+                    vocab_size=len(hp.vocab),
+                    num_units=hp.e,
+                    scope="embed_{}".format(i), reuse=reuse); i += 1
+        tensor = tf.concat((tensor, tensorE), -1)
+
+    if 'text_encoder_input' in hp.multispeaker:
+        speaker_codes_time = tf.tile(speaker_codes, [1,tf.shape(L)[1]])
+        speaker_reps = embed(speaker_codes_time,
+                       vocab_size=hp.nspeakers,
+                       num_units=hp.speaker_embedding_size,
+                       scope="embed_{}".format(i), reuse=reuse); i += 1 
+        tensor = tf.concat((tensor, speaker_reps), -1)
+
+    tensor = conv1d(tensor,
+                    filters=2*hp.d,
+                    size=1,
+                    rate=1,
+                    dropout_rate=hp.dropout_rate,
+                    activation_fn=tf.nn.relu,
+                    training=training,
+                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                    lcc=lcc, codes=speaker_codes); i += 1
+    tensor = conv1d(tensor,
+                    size=1,
+                    rate=1,
+                    dropout_rate=hp.dropout_rate,
+                    training=training,
+                    scope="C_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                    lcc=lcc, codes=speaker_codes); i += 1
+
+    for outer_counter in range(2):
+        for j in range(4):
+            tensor = hc(tensor,
+                            size=3,
+                            rate=3**j,
+                            dropout_rate=hp.dropout_rate,
+                            activation_fn=None,
+                            training=training,
+                            scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                            lcc=lcc, codes=speaker_codes); i += 1
+
+    for _ in range(2):
+        tensor = hc(tensor,
+                        size=3,
+                        rate=1,
+                        dropout_rate=hp.dropout_rate,
+                        activation_fn=None,
+                        training=training,
+                        scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                        lcc=lcc, codes=speaker_codes); i += 1
+
+
+    if 'text_encoder_towards_end' in hp.multispeaker:
+        speaker_codes_time = tf.tile(speaker_codes, [1,tf.shape(L)[1]])
+        speaker_reps = embed(speaker_codes_time,
+                       vocab_size=hp.nspeakers,
+                       num_units=hp.speaker_embedding_size,
+                       scope="embed_{}".format(i), reuse=reuse); i += 1 
+        tensor = tf.concat((tensor, speaker_reps), -1)
+        ### extra 1x1 conv to squash hidden + embedding -> desired size (2*hp.d)
+        tensor = conv1d(tensor,
+                        filters=2*hp.d,
+                        size=1,
+                        rate=1,
+                        dropout_rate=hp.dropout_rate,
+                        activation_fn=tf.nn.relu,
+                        training=training,
+                        scope="C_{}".format(i), normtype=hp.norm, reuse=reuse); i += 1
+
+    for _ in range(2):
+        tensor = hc(tensor,                        
+                        size=1,
+                        rate=1,
+                        dropout_rate=hp.dropout_rate,
+                        activation_fn=None,
+                        training=training,
+                        scope="HC_{}".format(i), normtype=hp.norm, reuse=reuse,\
+                        lcc=lcc, codes=speaker_codes); i += 1
+
+    K, V = tf.split(tensor, 2, -1)
+    return K, V
+
 def TextEnc(hp, L, training=True, speaker_codes=None, reuse=None):
     '''
     Args:
@@ -193,9 +299,15 @@ def Attention(hp, Q, K, V, monotonic_attention=False, prev_max_attentions=None):
     '''
     A = tf.matmul(Q, K, transpose_b=True) * tf.rsqrt(tf.to_float(hp.d))
     if monotonic_attention:  # for inference
-        key_masks = tf.sequence_mask(prev_max_attentions, hp.max_N)
-        reverse_masks = tf.sequence_mask(hp.max_N - hp.attention_win_size - prev_max_attentions, hp.max_N)[:, ::-1]
-        masks = tf.logical_or(key_masks, reverse_masks)
+        
+        if not hp.turn_off_monotonic_for_synthesis: # FIA mechanism is on
+            key_masks = tf.sequence_mask(prev_max_attentions, hp.max_N)
+            reverse_masks = tf.sequence_mask(hp.max_N - hp.attention_win_size - prev_max_attentions, hp.max_N)[:, ::-1]
+            masks = tf.logical_or(key_masks, reverse_masks)
+        else: # FIA mechanism is off --- create a mask that limits to max_phone +1
+            text_masks = tf.sequence_mask(hp.max_N - hp.text_lengths , hp.max_N)[:, ::-1]
+            masks = text_masks
+
         masks = tf.tile(tf.expand_dims(masks, 1), [1, hp.max_T, 1])
         paddings = tf.ones_like(A) * (-2 ** 32 + 1)  # (B, T/r, N)
         A = tf.where(tf.equal(masks, False), A, paddings)  # where(condition,x,y) --Return the elements, either from x or y, depending on the condition.
@@ -425,7 +537,7 @@ def SSRN(hp, Y, training=True, speaker_codes=None, reuse=None):
     return logits, Z
 
 
-def LinearTransformLabels(hp, L, training=True, reuse=None):
+def LinearTransformLabels(hp, L, training=True, reuse=None, out_dim='', i=1):
     '''
     Args:
       L: Text inputs. (B, N, labdim)
@@ -433,9 +545,12 @@ def LinearTransformLabels(hp, L, training=True, reuse=None):
     Return:
         K or V: Keys. (B, N, d)
     '''
-    i = 1
+
+    if out_dim == '':
+        out_dim = hp.d
+
     tensor = conv1d(L,
-                    filters=hp.d,
+                    filters=out_dim,
                     size=1,
                     rate=1,
                     dropout_rate=hp.dropout_rate,

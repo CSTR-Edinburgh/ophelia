@@ -47,6 +47,9 @@ def main_work():
     dataset = load_data(hp) 
     fpaths, text_lengths = dataset['fpaths'], dataset['text_lengths']
 
+    if hp.merlin_label_dir:
+         text_lengths = dataset['label_lengths']
+
     assert os.path.exists(hp.coarse_audio_dir)
     safe_makedir(hp.attention_guide_dir)
 

@@ -116,7 +116,7 @@ def invert_spectrogram(hp, spectrogram):
     return librosa.istft(spectrogram, hp.hop_length, win_length=hp.win_length, window="hann")
 
 # TODO add functionality so that we can also plot on phone identities to the encoder states on the y-axis
-def plot_alignment(hp, alignment, utt_idx, t2m_epoch, dir=''):
+def plot_alignment(hp, alignment, utt_idx, t2m_epoch, dir='', outfile='', savematrix=False):
     """Plots the alignment.
 
     Args:
@@ -139,9 +139,25 @@ def plot_alignment(hp, alignment, utt_idx, t2m_epoch, dir=''):
     plt.ylabel('Encoder timestep')
     plt.xlabel('Decoder timestep')
 
-    plt.savefig('{}/alignment_{}_utt{}_epoch{}.png'.format(dir,
-                                                           hp.config_name, utt_idx, t2m_epoch), format='png')
+    fig_file_name = '{}/alignment_{}_utt{}_epoch{}.png'.format(dir,hp.config_name, utt_idx, t2m_epoch)
+    if outfile != '':
+        fig_file_name = outfile + '.png'
+
+    plt.savefig(fig_file_name, format='png')
     plt.close(fig)
+
+    if savematrix:
+        alignment = np.transpose(alignment)
+        ali_file_name = '{}/alignment_{}_utt{}_epoch{}_size{}.float'.format(dir,hp.config_name, utt_idx, t2m_epoch,alignment.shape[0])
+        if outfile != '':
+            ali_file_name = outfile + '_' + str(alignment.shape[1]) + '.float'
+        array_to_binary_file(alignment, ali_file_name)
+
+def array_to_binary_file(data, output_file_name):
+    data = np.array(data, 'float32')
+    fid = open(output_file_name, 'wb')
+    data.tofile(fid)
+    fid.close()
 
 def get_attention_guide(xdim, ydim, g=0.2):
     '''Guided attention. Refer to page 3 on the paper.'''

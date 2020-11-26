@@ -22,7 +22,7 @@ from tqdm import tqdm
 from utils import plot_alignment
 from utils import spectrogram2wav, durations_to_position
 from utils import split_streams, magphase_synth_from_compressed 
-from data_load import load_data
+from data_load import load_data, get_labels_indices
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
 from libutil import safe_makedir, basename
 from configuration import load_config
@@ -432,8 +432,8 @@ def world_synthesis(features, outfile, hp, vuv_thresh=0.2, logf0=True):
 def synth_wave(hp, mag, outfile):
     if hp.vocoder == 'griffin_lim':
         wav = spectrogram2wav(hp, mag)
-        if hp.store_synth_features:
-            np.save(outfile.replace('.wav',''), mag)   
+        if hp.store_synth_features: # To synthesize using WaveRNN save the mag spectrum created by SSRN
+           np.save(outfile.replace('.wav','.npy'), mag)   
         soundfile.write(outfile, wav, hp.sr)
     elif hp.vocoder == 'world':
         world_synthesis(mag, outfile, hp)
@@ -474,15 +474,21 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
 
     # Ensure we aren't trying to generate more utterances than are actually in our test_transcript
     if num_sentences > 0:
-        assert num_sentences < len(fpaths)
+        assert num_sentences <= len(fpaths)
         L = L[:num_sentences, :]
         fpaths = fpaths[:num_sentences]
 
     bases = [basename(fpath) for fpath in fpaths]
 
     if hp.merlin_label_dir:
-        labels = [np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")) \
-                              for fpath in fpaths ]
+        labels = []
+        for fpath in fpaths:
+            label = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy"))
+            if hp.select_central:
+                central_ind = get_labels_indices(hp.merlin_lab_dim)
+                label = label[:,central_ind==1] 
+            labels.append(label)
+
         labels = list2batch(labels, hp.max_N)
 
 
@@ -494,12 +500,38 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
         speaker_data = np.ones((len(L), 1))  *  speaker_ix
     else:
         speaker_data = None
-
+   
+    if hp.turn_off_monotonic_for_synthesis: # if FIA mechanism is turn off
+        text_lengths = get_text_lengths(L)
+        hp.text_lengths = text_lengths + 1
+     
     # Load graph 
     ## TODO: generalise to combine other types of models into a synthesis pipeline?
     g1 = Text2MelGraph(hp, mode="synthesize"); print("Graph 1 (t2m) loaded")
+
+    if hp.norm == None :
+        t2m_layer_norm = False
+        hp.norm = 'layer'
+        hp.lr = 0.001
+        hp.beta1 = 0.9
+        hp.beta2 = 0.999
+        hp.epsilon = 0.00000001
+        hp.decay_lr = True
+        hp.batchsize = {'t2m': 32, 'ssrn': 8}
+    else:
+        t2m_layer_norm = True
+
     g2 = SSRNGraph(hp, mode="synthesize"); print("Graph 2 (ssrn) loaded")
 
+    if t2m_layer_norm == False:
+        hp.norm = None
+        hp.lr = 0.0002
+        hp.beta1 = 0.5
+        hp.beta2 = 0.9
+        hp.epsilon = 0.000001
+        hp.decay_lr = False
+        hp.batchsize = {'t2m': 16, 'ssrn': 8}
+    
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
 
@@ -585,13 +617,12 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
         #         sys.exit('Unsupported vocoder type: %s'%(hp.vocoder))
         #     #write(outdir + "/{}.wav".format(bases[i]), hp.sr, wav)
         #     soundfile.write(outdir + "/{}.wav".format(bases[i]), wav, hp.sr)
-            
 
-            
-        # Plot attention alignments 
-        for i in range(num_sentences):
-            plot_alignment(hp, alignments[i], utt_idx=i+1, t2m_epoch=t2m_epoch, dir=outdir)
-
+        # Plot trimmed attention alignment with filename
+        for i, mag in tqdm(enumerate(Z)):
+            outfile = os.path.join(outdir, bases[i])
+            trimmed_alignment = alignments[i,:text_lengths[i],:lengths[i]]
+            plot_alignment(hp, trimmed_alignment, utt_idx=i+1, t2m_epoch=t2m_epoch, dir=outdir, outfile=outfile)
 
 def main_work():
 
@@ -609,12 +640,26 @@ def main_work():
 
     a.add_argument('-t2m_epoch', default=-1, type=int, help='Default: use latest (-1)')
     a.add_argument('-ssrn_epoch', default=-1, type=int, help='Default: use latest (-1)')
-    
+    a.add_argument('-max_N', default=-1, type=int, help='Default: use max_N from config')
+    a.add_argument('-max_T', default=-1, type=int, help='Default: use max_T from config')
+    a.add_argument('-tr', default='', type=str, help='Default:use test_transcript from config')
+ 
     opts = a.parse_args()
     
     # ===============================================
     hp = load_config(opts.config)
     
+    if (opts.max_N != -1):
+       hp.max_N = opts.max_N
+    if (opts.max_T != -1):
+       hp.max_T = opts.max_T
+    if (opts.tr != ''):
+       hp.test_transcript = opts.tr
+
+    print("max_N=" + str(hp.max_N))
+    print("max_T=" + str(hp.max_T))
+    print("test_transcript=" + str(hp.test_transcript))
+
     outdir = opts.odir
     if outdir:
         outdir = os.path.join(outdir, basename(opts.config))

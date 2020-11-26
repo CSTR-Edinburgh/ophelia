@@ -17,7 +17,7 @@ import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 
 from architectures import Text2MelGraph, SSRNGraph, BabblerGraph
-from data_load import load_data
+from data_load import load_data, get_labels_indices
 from synthesize import synth_text2mel, synth_mel2mag, split_batch, make_mel_batch, synth_codedtext2mel, get_text_lengths, encode_text, list2batch
 from objective_measures import compute_dtw_error, compute_simple_LSD
 from libutil import basename, safe_makedir
@@ -55,10 +55,16 @@ def compute_validation(hp, model_type, epoch, inputs, synth_graph, sess, speaker
     return score
 
 
-def get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_inputs, attention_mels, alignment_dir):
-    return_values = sess.run([attention_graph.alignments], # use attention_graph to obtain attention maps for a few given inputs and mels
+def get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_inputs, attention_mels, alignment_dir, attention_labels=None):
+    if hp.merlin_label_dir:
+        return_values = sess.run([attention_graph.alignments], # use attention_graph to obtain attention maps for a few given inputs and mels
+                             {attention_graph.L: attention_inputs,
+                              attention_graph.mels: attention_mels,
+                              attention_graph.merlin_label: attention_labels})
+    else:
+        return_values = sess.run([attention_graph.alignments], # use attention_graph to obtain attention maps for a few given inputs and mels
                              {attention_graph.L: attention_inputs, 
-                              attention_graph.mels: attention_mels}) 
+                              attention_graph.mels: attention_mels})
     alignments = return_values[0] # sess run returns a list, so unpack this list
     for i in range(hp.num_sentences_to_plot_attention):
         plot_alignment(hp, alignments[i], i+1, epoch, dir=alignment_dir)
@@ -115,8 +121,13 @@ def main_work():
     validation_text = validation_text[v_indices, :]
     validation_labels = None # default
     if hp.merlin_label_dir:
-        validation_labels = [np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy")) \
-                              for fpath in valid_filenames ]
+        validation_labels = []
+        for fpath in valid_filenames:
+            val_label = np.load("{}/{}".format(hp.merlin_label_dir, basename(fpath)+".npy"))
+            if hp.select_central:
+                central_ind = get_labels_indices(hp.merlin_lab_dim)
+                val_label = val_label[:,central_ind==1]
+            validation_labels.append(val_label)
         validation_labels = list2batch(validation_labels, hp.max_N)
 
     if 'position_in_phone' in hp.history_type:  
@@ -164,6 +175,10 @@ def main_work():
         for i in range(hp.num_sentences_to_plot_attention): # copy data into this fixed sized array
             attention_mels_array[i, :attention_mels[i].shape[0], :attention_mels[i].shape[1]] = attention_mels[i]
         attention_mels = attention_mels_array # rename for convenience
+        if hp.merlin_label_dir:
+            attention_labels = validation_labels[:hp.num_sentences_to_plot_attention]
+        else:
+            attention_labels = None
 
     ## Map to appropriate type of graph depending on model_type:
     AppropriateGraph = {'t2m': Text2MelGraph, 'ssrn': SSRNGraph, 'babbler': BabblerGraph}[model_type]
@@ -246,7 +261,7 @@ def main_work():
 
         #plot attention generated from freshly initialised model
         if hp.plot_attention_every_n_epochs and model_type == 't2m' and epoch == 0: # ssrn model doesn't generate alignments 
-            get_and_plot_alignments(hp, epoch - 1, attention_graph, sess, attention_inputs, attention_mels, logdir + "/alignments") # epoch-1 refers to freshly initialised model
+            get_and_plot_alignments(hp, epoch - 1, attention_graph, sess, attention_inputs, attention_mels, logdir + "/alignments", attention_labels=attention_labels) # epoch-1 refers to freshly initialised model
  
         current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference, duration_data=validation_duration_data, validation_labels=validation_labels, position_in_phone_data=position_in_phone_data)
         info('validation epoch {0}: {1:0.3f}'.format(epoch, current_score))
@@ -257,23 +272,25 @@ def main_work():
                 gs, loss_components, _ = sess.run([g.global_step, g.loss_components, g.train_op])
                 loss_history.append(loss_components)
                 
+            ### Show training loss for every epoch
+            loss_history = np.array(loss_history)
+            train_loss_mean_std = np.concatenate([loss_history.mean(axis=0), loss_history.std(axis=0)])
+
+            train_loss_mean_std = ' '.join(['{:0.3f}'.format(score) for score in train_loss_mean_std])
+            info('train epoch {0}: {1}'.format(epoch, train_loss_mean_std))
+
             ### End of epoch: validate?
             if hp.validate_every_n_epochs:
                 if epoch % hp.validate_every_n_epochs == 0:
                     
-                    loss_history = np.array(loss_history)
-                    train_loss_mean_std = np.concatenate([loss_history.mean(axis=0), loss_history.std(axis=0)])
-                    loss_history = []
-
-                    train_loss_mean_std = ' '.join(['{:0.3f}'.format(score) for score in train_loss_mean_std])
-                    info('train epoch {0}: {1}'.format(epoch, train_loss_mean_std))
-
                     current_score = compute_validation(hp, model_type, epoch, validation_inputs, synth_graph, sess, speaker_codes, valid_filenames, validation_reference, duration_data=validation_duration_data, validation_labels=validation_labels, position_in_phone_data=position_in_phone_data)
                     info('validation epoch {0:0}: {1:0.3f}'.format(epoch, current_score))
 
+            loss_history = []
+
             ### End of epoch: plot attention matrices? #################################
             if hp.plot_attention_every_n_epochs and model_type == 't2m' and epoch % hp.plot_attention_every_n_epochs == 0: # ssrn model doesn't generate alignments 
-                get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_inputs, attention_mels, logdir + "/alignments")
+                get_and_plot_alignments(hp, epoch, attention_graph, sess, attention_inputs, attention_mels, logdir + "/alignments", attention_labels=attention_labels)
 
             ### Save end of each epoch (all but the most recent 5 will be overwritten):       
             stem = logdir + '/model_epoch_{0}'.format(epoch)
