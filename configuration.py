@@ -25,7 +25,7 @@ CONFIG_DEFAULTS = [
     ('squash_output_t2m', True, 'apply sigmoid to output - binary divergence loss will be disabled if False'),
     ('squash_output_ssrn', True, 'apply sigmoid to output - binary divergence loss will be disabled if False'),
     ('store_synth_features', False, 'store .npy file of features alongside output .wav file'),
-    ('turn_off_monotonic_for_synthesis',False, 'turns off FIA mechanism for synthesis'),
+    ('turn_off_monotonic_for_synthesis',False, 'turns off FIA mechanism for synthesis, should be False during training'),
     ('lw_cdp',0.0,''),
     ('lw_ain',0.0,''),
     ('lw_aout',0.0,''),

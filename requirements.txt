@@ -1,4 +1,4 @@
-numpy==1.15.4
+numpy==1.16.4
 absl-py==0.6.1
 astor==0.7.1
 audioread==2.1.6
