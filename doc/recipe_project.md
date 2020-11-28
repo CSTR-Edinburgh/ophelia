@@ -2,14 +2,9 @@
 
 ```
 git clone -b project https://github.com/CSTR-Edinburgh/ophelia.git
-git clone https://github.com/AvashnaGovender/Merlyn
-git clone https://github.com/AvashnaGovender/Tacotron
+git clone https://github.com/AvashnaGovender/Merlyn.git
+git clone https://github.com/AvashnaGovender/Tacotron.git
 ```
-
-## Tacotron experiments with Blizzard 2013 data
-
-See readme in Tacotron repository: https://github.com/AvashnaGovender/Tacotron
-
 ## Attention experiments
 
 ### Obtaining forced alignment labels:
@@ -25,7 +20,7 @@ Step 6 - Get durations and create guides:
 https://github.com/AvashnaGovender/Tacotron/blob/master/PAG_recipe.md
 
 To use FA as target in DCTTS see config file:  
-ophelia/config/project/fa_as_target.cfg
+[fa_as_target.cfg](config/project/fa_as_target.cfg)
 
 ### FA as guides
 
@@ -37,7 +32,7 @@ python convert_alignment_to_guide.py fa_matrix.npy fa_guide.npy
 ```
 
 To use FA as guide in DCTTS see config file:  
-ophelia/config/project/fa_as_guide.cfg
+[fa_as_guide.cfg](config/project/fa_as_guide.cfg)
 
 ### FA as attention
 
@@ -49,8 +44,7 @@ python add_duration_to_transcript.py fa_matrix_dir transcript_file new_transcrip
 ```
 
 To use FA as attention in DCTTS see config file:  
-ophelia/config/project/fa_as_attention.cfg
-
+[fa_as_attention.cfg](config/project/fa_as_attention.cfg)
 
 ## Text Encoder experiments
 
@@ -64,13 +58,13 @@ python scripts/prepare_inputs.py
 ```
 
 To use Labels-TE in DCTTS see config file:  
-ophelia/config/project/labels_minus_te.cfg
+[labels_minus_te.cfg](config/project/labels_minus_te.cfg)
 
 To use Labels+TE in DCTTS see config file:  
-ophelia/config/project/labels_plus_te.cfg
+[labels_plus_te.cfg](config/project/labels_plus_te.cfg)
 
 To use C-Labels+TE in DCTTS see config file:  
-ophelia/config/project/c-labels_plus_te.cfg
+[c-labels_plus_te.cfg](config/project/c-labels_plus_te.cfg)
 
 ### PE&Labels + TE
 
@@ -85,3 +79,7 @@ To use PE&Labels+TE set MerlinTextEncWithPhoneEmbedding to True in the config fi
 ## FIA experiments
 
 To generate without FIA (forcibly incremental attention) set turn_off_monotonic_for_synthesis to True in the config file.
+
+## Tacotron experiments
+
+See readme in Tacotron repository: https://github.com/AvashnaGovender/Tacotron
