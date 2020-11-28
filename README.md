@@ -2,11 +2,13 @@
 
 A modified version of Kyubyong Park's [dc_tts repository](https://github.com/Kyubyong/dc_tts), which implements a variant of the system described in [Efficiently Trainable Text-to-Speech System Based on Deep Convolutional Networks with Guided Attention](https://arxiv.org/abs/1710.08969).
 
-## Recent additions
+## Recent additions (NEW!)
 
 - turn on/off monotonic attention during synthesis  
 - other attention-based losses (CDP, Ain and Aout), see "Confidence through attention", http://arxiv.org/abs/1710.03743  
 - MerlinTextEncoder (TextEncoder that takes Merlin labels as input)  
+
+Recipe to run experiments can be found here: [ doc/recipe_project.md](doc/recipe_project.md) 
 
 ## Tools
 
