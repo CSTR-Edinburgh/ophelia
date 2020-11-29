@@ -76,6 +76,14 @@ cd ophelia/
 
 To use PE&Labels+TE set MerlinTextEncWithPhoneEmbedding to True in the config file.
 
+## Gross error detection experiments
+
+To calculate CDP, Ain and Aout:
+```
+cd ophelia/
+python calculate_CDP_Ain_Aout.py attention_matrix.float
+```
+
 ## FIA experiments
 
 To generate without FIA (forcibly incremental attention) set turn_off_monotonic_for_synthesis to True in the config file.
