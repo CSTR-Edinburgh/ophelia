@@ -31,6 +31,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 from libutil import put_speech
 
+from calculate_CDP_Ain_Aout import getCDP, getAP
 
 def start_clock(comment):
     print ('%s... '%(comment)),
@@ -584,6 +585,18 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
         if speaker_id:
             outdir += '_speaker-%s'%(speaker_id)
         safe_makedir(outdir)
+
+        # Plot trimmed attention alignment with filename
+        print("Plot attention, will save to following dir: %s"%(outdir))
+        print("File |  CDP | Ain")
+        for i, mag in enumerate(Z):
+            outfile = os.path.join(outdir, bases[i])
+            trimmed_alignment = alignments[i,:text_lengths[i],:lengths[i]]
+            plot_alignment(hp, trimmed_alignment, utt_idx=i+1, t2m_epoch=t2m_epoch, dir=outdir, outfile=outfile)
+            CDP = getCDP(trimmed_alignment)
+            APin, APout = getAP(trimmed_alignment)
+            print("%s | %.2f | %.2f"%( bases[i], CDP, APin))
+
         print("Generating wav files, will save to following dir: %s"%(outdir))
 
         
@@ -618,11 +631,6 @@ def synthesize(hp, speaker_id='', num_sentences=0, ncores=1, topoutdir='', t2m_e
         #     #write(outdir + "/{}.wav".format(bases[i]), hp.sr, wav)
         #     soundfile.write(outdir + "/{}.wav".format(bases[i]), wav, hp.sr)
 
-        # Plot trimmed attention alignment with filename
-        for i, mag in tqdm(enumerate(Z)):
-            outfile = os.path.join(outdir, bases[i])
-            trimmed_alignment = alignments[i,:text_lengths[i],:lengths[i]]
-            plot_alignment(hp, trimmed_alignment, utt_idx=i+1, t2m_epoch=t2m_epoch, dir=outdir, outfile=outfile)
 
 def main_work():
 
@@ -678,3 +686,4 @@ def main_work():
 if __name__=="__main__":
 
     main_work()
+

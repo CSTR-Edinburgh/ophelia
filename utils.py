@@ -147,17 +147,10 @@ def plot_alignment(hp, alignment, utt_idx, t2m_epoch, dir='', outfile='', savema
     plt.close(fig)
 
     if savematrix:
-        alignment = np.transpose(alignment)
-        ali_file_name = '{}/alignment_{}_utt{}_epoch{}_size{}.float'.format(dir,hp.config_name, utt_idx, t2m_epoch,alignment.shape[0])
+        ali_file_name = '{}/alignment_{}_utt{}_epoch{}.npy'.format(dir,hp.config_name, utt_idx, t2m_epoch)
         if outfile != '':
-            ali_file_name = outfile + '_' + str(alignment.shape[1]) + '.float'
-        array_to_binary_file(alignment, ali_file_name)
-
-def array_to_binary_file(data, output_file_name):
-    data = np.array(data, 'float32')
-    fid = open(output_file_name, 'wb')
-    data.tofile(fid)
-    fid.close()
+            ali_file_name = outfile + '_attention.npy'
+        np.save(ali_file_name, alignment)
 
 def get_attention_guide(xdim, ydim, g=0.2):
     '''Guided attention. Refer to page 3 on the paper.'''
@@ -332,3 +325,4 @@ if __name__ == '__main__':
         print( a)
         print (durations_to_fractional_position(np.array([3,0,1,2])))
         print (durations_to_absolute_position(np.array([3,0,1,2])))
+

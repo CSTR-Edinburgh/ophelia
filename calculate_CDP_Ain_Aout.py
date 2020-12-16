@@ -6,19 +6,6 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 
-def load_binary_file(file_name, dimension):
-
-	fid_lab = open(file_name, 'rb')
-	features = np.fromfile(fid_lab, dtype=np.float32)
-	fid_lab.close()
-	assert features.size % float(dimension) == 0.0,'specified dimension not compatible with data'
-	frame_number = int(features.size / dimension)
-	features = features[:(dimension * frame_number)]
-	features = features.reshape((-1, dimension))
-
-	features = np.transpose(features)
-	return  features, frame_number
-
 def get_att_per_input(A):
 
 	att_per_input = np.trim_zeros(np.sum(A,axis=1),'b')
@@ -70,11 +57,9 @@ def getAP(A):
 	return APin, APout
 
 def main(file_name):
-		
-	dim  = int(file_name.split('_')[-1].split('.')[0])
 
-	A, fn = load_binary_file(file_name, dim) # square matrix axis 0: input / axis 1: output
-
+	A = np.load(file_name) # matrix axis 0: input (phones) / axis 1: output (acoustic)
+        print(A.shape)
 	# fig, ax = plt.subplots()
 	# im = ax.imshow(A)
 	# fig.colorbar(im)
@@ -91,9 +76,10 @@ def main(file_name):
 
 if __name__ == '__main__':
 
-	# Input attention file - float format
+	# Input attention matrix - numpy format - axis 0: input (phones) / axis 1: output (acoustic)
 
 	file_name = sys.argv[1]
 	
 	main(file_name)
+
 
