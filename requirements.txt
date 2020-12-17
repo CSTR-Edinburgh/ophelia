@@ -41,7 +41,7 @@ six==1.11.0
 SoundFile==0.10.2
 subprocess32==3.5.3
 tensorboard==1.12.0
-tensorflow-gpu==1.12.0
+tensorflow-gpu==2.4.0
 termcolor==1.1.0
 tqdm==4.28.1
 Werkzeug==0.14.1
