@@ -82,6 +82,7 @@ def main_work():
     # ===============================================
     model_type = opts.model_type
     hp = load_config(opts.config)
+    hp.turn_off_monotonic_for_synthesis = False # this should be False during training
     logdir = hp.logdir + "-" + model_type 
     logger_setup.logger_setup(logdir)
     info('Command line: %s'%(" ".join(sys.argv)))

@@ -73,32 +73,42 @@ def trim_waves_in_directory(in_dir, out_dir, num_workers=1, tqdm=lambda x: x, \
 def _process_utterance(wav_path, out_dir, top_db=30, end_pad_sec=0.3, pad_sec=0.01, minimum_duration_sec=0.5, trimonly=False):
 
     wav, fs = soundfile.read(wav_path)  ## TODO: assert mono
-    pad = int(pad_sec * fs)
-    end_pad = int(end_pad_sec * fs)
-    # print pad
-    base = get_basename(wav_path)
-    # print base
-    _, (start, end) = librosa.effects.trim(wav, top_db=top_db)
-    start = max(0, (start - end_pad))
-    end = min(len(wav), (end + end_pad))
-    wav = wav[start:end]
-    if trimonly:
-        ofile = os.path.join(out_dir, base + '.wav')
-        soundfile.write(ofile, wav, fs)
+
+    if len(wav) > 0:
+
+        pad = int(pad_sec * fs)
+        end_pad = int(end_pad_sec * fs)
+        # print pad
+        base = get_basename(wav_path)
+        # print base
+        _, (start, end) = librosa.effects.trim(wav, top_db=top_db)
+        start = max(0, (start - end_pad))
+        end = min(len(wav), (end + end_pad))
+
+        if start < end:
+            wav = wav[start:end]
+
+        if trimonly:
+            ofile = os.path.join(out_dir, base + '.wav')
+            soundfile.write(ofile, wav, fs)
+        else:
+            starts_ends = librosa.effects.split(wav, top_db=top_db)
+            starts_ends[:,0] -= pad
+            starts_ends[:,1] += pad
+            starts_ends = np.clip(starts_ends, 0, wav.size)
+            lengths = starts_ends[:,1] - starts_ends[:,0]
+            starts_ends = starts_ends[lengths > fs * minimum_duration_sec]
+
+
+            for (i, (s,e)) in enumerate(starts_ends):
+
+                ofile = os.path.join(out_dir, base + '_seg%s.wav'%(str(i+1).zfill(4)))
+                # print ofile
+                soundfile.write(ofile, wav[s:e], fs)
+
     else:
-        starts_ends = librosa.effects.split(wav, top_db=top_db)
-        starts_ends[:,0] -= pad
-        starts_ends[:,1] += pad
-        starts_ends = np.clip(starts_ends, 0, wav.size)
-        lengths = starts_ends[:,1] - starts_ends[:,0]
-        starts_ends = starts_ends[lengths > fs * minimum_duration_sec]
 
-
-        for (i, (s,e)) in enumerate(starts_ends):
-
-            ofile = os.path.join(out_dir, base + '_seg%s.wav'%(str(i+1).zfill(4)))
-            # print ofile
-            soundfile.write(ofile, wav[s:e], fs)
+        print "File discarded: " + wav_path
 
 def test():
     safe_makedir('/tmp/splitwaves/')
