@@ -8,34 +8,7 @@ git clone https://github.com/AvashnaGovender/Tacotron.git
 
 ## DCTTS + WaveRNN
 
-To generate DCTTS samples using WaveRNN as the vocoder set:
-```
-store_synth_features = True
-```
-in the config file and run the synthesis script to create the necessary synthesized magnitude files:
-```
-cd ophelia
-dctts_synth_dir='~/dctts_synth_dir/' # will contain magnitude files (.npy) and wavefiles generated using Grifim-Lim
-./util/submit_tf.sh synthesize.py -c config/lj_tutorial.cfg -N 5 -odir ${dctts_synth_dir}
-```
-
-To generate the wavefiles using WaveRNN:
-```
-deactivate # deactivate DCTTS virtual env
-cd ../Tacotron/
-virtualenv --distribute --python=/usr/bin/python3.6 env
-source env/bin/activate
-pip install --upgrade pip
-pip install torch torchvision
-pip install -r requirements.txt 
-pip install numba==0.48
-```
-
-And run:
-```
-wavernn_synth_dir='~/wavernn_synth_dir/' # will contain wavefiles generated using WaveRNN
-python synthesize_dctts_wavernn.py -i ${dctts_synth_dir} -o ${wavernn_synth_dir}
-```
+See recipe [here.](recipe_WaveRNN.md)
 
 ## Attention experiments
 
@@ -113,7 +86,7 @@ To use PE&Labels+TE set MerlinTextEncWithPhoneEmbedding to True in the config fi
 To calculate CDP, Ain and Aout:
 ```
 cd ophelia/
-python calculate_CDP_Ain_Aout.py attention_matrix.float
+python calculate_CDP_Ain_Aout.py attention_matrix.npy
 ```
 
 ## FIA experiments
